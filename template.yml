@@ -56,7 +56,7 @@ Resources:
   CreateAccountPolicy:
     Type: "AWS::IAM::Policy"
     Properties:
-      PolicyName: "CreateAccountPolicy"
+      PolicyName: CreateAccountPolicy
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -69,12 +69,6 @@ Resources:
               - "servicecatalog:SearchProducts"
             Resource: "*"
           - Effect: Allow
-            Action: "servicecatalog:DescribeRecord"
-            Resource: "*"
-            Condition:
-              StringEquals:
-                "servicecatalog:roleLevel": "self"
-          - Effect: Allow
             Action:
               - "servicecatalog:DescribeProduct"
               - "servicecatalog:ProvisionProduct"
@@ -82,6 +76,57 @@ Resources:
           - Effect: Allow
             Action: "servicecatalog:AssociatePrincipalWithPortfolio"
             Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
+          - Effect: Allow
+            Action: "dynamodb:PutItem"
+            Resource: !GetAtt AccountTable.Arn
+      Roles:
+        - !Ref CreateAccountRole
+
+  # see https://docs.aws.amazon.com/controltower/latest/userguide/account-factory.html#automated-provisioning
+  ControlTowerAccountFactoryPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: ControlTowerAccountFactoryPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSControlTowerAccountFactoryAccess
+            Effect: Allow
+            Action:
+              - "sso:GetProfile"
+              - "sso:CreateProfile"
+              - "sso:UpdateProfile"
+              - "sso:AssociateProfile"
+              - "sso:CreateApplicationInstance"
+              - "sso:GetSSOStatus"
+              - "sso:GetTrust"
+              - "sso:CreateTrust"
+              - "sso:UpdateTrust"
+              - "sso:GetPeregrineStatus"
+              - "sso:GetApplicationInstance"
+              - "sso:ListDirectoryAssociations"
+              - "sso:ListPermissionSets"
+              - "sso:GetPermissionSet"
+              - "sso:ProvisionApplicationInstanceForAWSAccount"
+              - "sso:ProvisionApplicationProfileForAWSAccountInstance"
+              - "sso:ProvisionSAMLProvider"
+              - "sso:ListProfileAssociations"
+              - "sso-directory:ListMembersInGroup"
+              - "sso-directory:AddMemberToGroup"
+              - "sso-directory:SearchGroups"
+              - "sso-directory:SearchGroupsWithGroupName"
+              - "sso-directory:SearchUsers"
+              - "sso-directory:CreateUser"
+              - "sso-directory:DescribeGroups"
+              - "sso-directory:DescribeDirectory"
+              - "sso-directory:GetUserPoolInfo"
+              - "controltower:CreateManagedAccount"
+              - "controltower:DescribeManagedAccount"
+              - "controltower:DeregisterManagedAccount"
+              - "s3:GetObject"
+              - "organizations:describeOrganization"
+              - "sso:DescribeRegisteredRegions"
+            Resource: "*"
       Roles:
         - !Ref CreateAccountRole
 
@@ -93,6 +138,7 @@ Resources:
         Variables:
           POWERTOOLS_SERVICE_NAME: create_account
           LAMBDA_ROLE_ARN: !GetAtt CreateAccountRole.Arn
+          ACCOUNT_TABLE: !Ref AccountTable
       Events:
         HttpApiEvent:
           Type: HttpApi
@@ -101,6 +147,90 @@ Resources:
             Method: POST
       Handler: create_account.lambda_handler
       Role: !GetAtt CreateAccountRole.Arn
+
+  AccountTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: AccountName
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: AccountName
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  AccountStatusLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AccountStatusLambdaFunction}"
+      RetentionInDays: 7
+
+  AccountStatusRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      Policies:
+        - PolicyName: AccountStatusPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "servicecatalog:DescribeRecord"
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "servicecatalog:accountLevel": "self"
+              - Effect: Allow
+                Action: "dynamodb:GetItem"
+                Resource: !GetAtt AccountTable.Arn
+
+  AccountStatusPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${AccountStatusLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${AccountStatusLogGroup}:log-stream:*"
+      Roles:
+        - !Ref AccountStatusRole
+
+  AccountStatusLambdaFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: Account Status Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: account_status
+          LAMBDA_ROLE_ARN: !GetAtt AccountStatusRole.Arn
+          ACCOUNT_TABLE: !Ref AccountTable
+      Events:
+        HttpApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: "/v1/accounts/{recordId}"
+            Method: GET
+      Handler: account_status.lambda_handler
+      Role: !GetAtt AccountStatusRole.Arn
 
   InvokeCallbackLogGroup:
     Type: "AWS::Logs::LogGroup"
@@ -121,11 +251,21 @@ Resources:
             Action: "sts:AssumeRole"
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      Policies:
+        - PolicyName: InvokeCallbackPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:GetItem"
+                  - "dynamodb:DeleteItem"
+                Resource: !GetAtt AccountTable.Arn
 
   InvokeCallbackPolicy:
     Type: "AWS::IAM::Policy"
     Properties:
-      PolicyName: "CloudWatchLogs"
+      PolicyName: CloudWatchLogs
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -146,6 +286,7 @@ Resources:
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: invoke_callback
+          ACCOUNT_TABLE: !Ref AccountTable
       Events:
         EventBridgeEvent:
           Type: EventBridgeRule
@@ -161,3 +302,8 @@ Resources:
                   - CreateManagedAccount
       Handler: invoke_callback.lambda_handler
       Role: !GetAtt InvokeCallbackRole.Arn
+
+Outputs:
+  ApiUrl:
+    Description: API endpoint URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

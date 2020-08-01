@@ -37,7 +37,7 @@ class ServiceCatalog:
                 PrincipalARN=principal_arn,
                 PrincipalType="IAM",
             )
-        except botocore.exceptions.ClientError as error:
+        except botocore.exceptions.ClientError:
             logger.exception(
                 f"Unable to associate principal to portfolio {portfolio_id}"
             )
@@ -73,7 +73,7 @@ class ServiceCatalog:
 
         return data
 
-    def provision_product(self, product: dict, parameters: dict) -> str:
+    def provision_product(self, product: dict, parameters: dict) -> tuple:
         """
         Provision a new AWS account
         """
