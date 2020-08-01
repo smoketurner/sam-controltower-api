@@ -27,7 +27,7 @@ class ServiceCatalog:
                     return portfolio["Id"]
         return None
 
-    def associate_principal(self, portfolio_id, principal_arn):
+    def associate_principal(self, portfolio_id: str, principal_arn: str) -> None:
         """
         Associate an IAM principal to a portfolio
         """
@@ -42,7 +42,7 @@ class ServiceCatalog:
                 f"Unable to associate principal to portfolio {portfolio_id}"
             )
 
-    def get_ct_product(self):
+    def get_ct_product(self) -> dict:
         """
         Get the Control Tower account provision product ID
         """
@@ -56,7 +56,7 @@ class ServiceCatalog:
                 break
 
         if not product_id:
-            raise Exception(f'Unable to locate "{CT_PRODUCT_NAME}"')
+            raise Exception(f'Unable to locate product "{CT_PRODUCT_NAME}"')
 
         artifact_id = None
 
@@ -80,15 +80,14 @@ class ServiceCatalog:
 
         params = {
             "ProvisionedProductName": parameters["AccountName"],
-            "ProvisioningParameters": [],
+            "ProvisioningParameters": [
+                {"Key": key, "Value": value} for key, value in parameters.items()
+            ],
         }
-
-        for key, value in parameters.items():
-            params["ProvisioningParameters"].append({"Key": key, "Value": value})
 
         params.update(product)
 
-        logger.info()
+        logger.info(params)
 
         try:
             response = self.client.provision_product(**params)
