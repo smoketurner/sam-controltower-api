@@ -1,0 +1,8 @@
+.aws-sam
+.venv
+__pycache__
+*.pyc
+coverage
+scripts/event.json
+packaged.yml
+samconfig.toml

@@ -1,0 +1,126 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: AWS SAM project an API for Control Tower
+
+Globals:
+  Function:
+    Runtime: python3.8
+    CodeUri: src/
+    MemorySize: 1024 # megabytes
+    Timeout: 5 # seconds
+    Tracing: Active
+    Environment:
+      Variables:
+        POWERTOOLS_METRICS_NAMESPACE: ControlTowerAPI
+        LOG_LEVEL: DEBUG
+
+Resources:
+  CreateAccountLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${CreateAccountLambdaFunction}"
+      RetentionInDays: 7
+
+  CreateAccountRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+
+  CreateAccountPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "CloudWatchLogs"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}::${AWS::AccountId}:log-group:${CreateAccountLogGroup}"
+              - !Sub "arn:aws:logs:${AWS::Region}::${AWS::AccountId}:log-group:${CreateAccountLogGroup}:log-stream:*"
+      Roles:
+        - !Ref CreateAccountRole
+
+  CreateAccountLambdaFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: Create Account Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: create_account
+      Events:
+        HttpApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /v1/accounts
+            Method: POST
+      Handler: create_account.lambda_handler
+      Role: !GetAtt CreateAccountRole.Arn
+
+  InvokeCallbackLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${InvokeCallbackLambdaFunction}"
+      RetentionInDays: 7
+
+  InvokeCallbackRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+
+  InvokeCallbackPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "CloudWatchLogs"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}::${AWS::AccountId}:log-group:${InvokeCallbackLogGroup}"
+              - !Sub "arn:aws:logs:${AWS::Region}::${AWS::AccountId}:log-group:${InvokeCallbackLogGroup}:log-stream:*"
+      Roles:
+        - !Ref InvokeCallbackRole
+
+  InvokeCallbackLambdaFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: Invoke Callback Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: invoke_callback
+      Events:
+        EventBridgeEvent:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: "$.detail.serviceEventDetails.createManagedAccountStatus"
+            Pattern:
+              source:
+                - "aws.controltower"
+              "detail-type":
+                - "AWS Service Event via CloudTrail"
+              detail:
+                eventName:
+                  - CreateManagedAccount
+      Handler: invoke_callback.lambda_handler
+      Role: !GetAtt InvokeCallbackRole.Arn
