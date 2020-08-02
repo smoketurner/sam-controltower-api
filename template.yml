@@ -7,7 +7,7 @@ Globals:
   Function:
     Runtime: python3.8
     CodeUri: src/
-    MemorySize: 1024 # megabytes
+    MemorySize: 128 # megabytes
     Timeout: 20 # seconds
     Tracing: Active
     Environment:
@@ -19,7 +19,7 @@ Resources:
   CreateAccountLogGroup:
     Type: "AWS::Logs::LogGroup"
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${CreateAccountLambdaFunction}"
+      LogGroupName: !Sub "/aws/lambda/${CreateAccountFunction}"
       RetentionInDays: 7
 
   CreateAccountRole:
@@ -35,11 +35,34 @@ Resources:
             Action: "sts:AssumeRole"
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      Policies:
+        - PolicyName: CreateAccountPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "servicecatalog:ListPortfolios"
+                  - "servicecatalog:SearchProducts"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "servicecatalog:DescribeProduct"
+                  - "servicecatalog:ProvisionProduct"
+                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:product/*"
+              - Effect: Allow
+                Action: "servicecatalog:AssociatePrincipalWithPortfolio"
+                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
+              - Effect: Allow
+                Action:
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:PutItem"
+                Resource: !GetAtt AccountTable.Arn
 
   CreateAccountLogPolicy:
     Type: "AWS::IAM::Policy"
     Properties:
-      PolicyName: "CloudWatchLogs"
+      PolicyName: CloudWatchLogs
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -53,32 +76,16 @@ Resources:
       Roles:
         - !Ref CreateAccountRole
 
-  CreateAccountPolicy:
+  CreateAccountRolePolicy:
     Type: "AWS::IAM::Policy"
     Properties:
-      PolicyName: CreateAccountPolicy
+      PolicyName: CreateAccountRolePolicy
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Action: "iam:GetRole"
             Resource: !GetAtt CreateAccountRole.Arn
-          - Effect: Allow
-            Action:
-              - "servicecatalog:ListPortfolios"
-              - "servicecatalog:SearchProducts"
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - "servicecatalog:DescribeProduct"
-              - "servicecatalog:ProvisionProduct"
-            Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:product/*"
-          - Effect: Allow
-            Action: "servicecatalog:AssociatePrincipalWithPortfolio"
-            Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
-          - Effect: Allow
-            Action: "dynamodb:PutItem"
-            Resource: !GetAtt AccountTable.Arn
       Roles:
         - !Ref CreateAccountRole
 
@@ -130,7 +137,7 @@ Resources:
       Roles:
         - !Ref CreateAccountRole
 
-  CreateAccountLambdaFunction:
+  CreateAccountFunction:
     Type: "AWS::Serverless::Function"
     Properties:
       Description: Create Account Lambda handler
@@ -146,17 +153,19 @@ Resources:
             Path: /v1/accounts
             Method: POST
       Handler: create_account.lambda_handler
+      Layers:
+        - !Ref DependencyLayer
       Role: !GetAtt CreateAccountRole.Arn
 
   AccountTable:
     Type: "AWS::DynamoDB::Table"
     Properties:
       AttributeDefinitions:
-        - AttributeName: AccountName
+        - AttributeName: account_name
           AttributeType: S
       BillingMode: PAY_PER_REQUEST
       KeySchema:
-        - AttributeName: AccountName
+        - AttributeName: account_name
           KeyType: HASH
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -166,7 +175,7 @@ Resources:
   AccountStatusLogGroup:
     Type: "AWS::Logs::LogGroup"
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AccountStatusLambdaFunction}"
+      LogGroupName: !Sub "/aws/lambda/${AccountStatusFunction}"
       RetentionInDays: 7
 
   AccountStatusRole:
@@ -193,9 +202,6 @@ Resources:
                 Condition:
                   StringEquals:
                     "servicecatalog:accountLevel": "self"
-              - Effect: Allow
-                Action: "dynamodb:GetItem"
-                Resource: !GetAtt AccountTable.Arn
 
   AccountStatusPolicy:
     Type: "AWS::IAM::Policy"
@@ -214,15 +220,13 @@ Resources:
       Roles:
         - !Ref AccountStatusRole
 
-  AccountStatusLambdaFunction:
+  AccountStatusFunction:
     Type: "AWS::Serverless::Function"
     Properties:
       Description: Account Status Lambda handler
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: account_status
-          LAMBDA_ROLE_ARN: !GetAtt AccountStatusRole.Arn
-          ACCOUNT_TABLE: !Ref AccountTable
       Events:
         HttpApiEvent:
           Type: HttpApi
@@ -230,12 +234,14 @@ Resources:
             Path: "/v1/accounts/{recordId}"
             Method: GET
       Handler: account_status.lambda_handler
+      Layers:
+        - !Ref DependencyLayer
       Role: !GetAtt AccountStatusRole.Arn
 
   InvokeCallbackLogGroup:
     Type: "AWS::Logs::LogGroup"
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${InvokeCallbackLambdaFunction}"
+      LogGroupName: !Sub "/aws/lambda/${InvokeCallbackFunction}"
       RetentionInDays: 7
 
   InvokeCallbackRole:
@@ -258,8 +264,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - "dynamodb:DescribeTable"
                   - "dynamodb:GetItem"
-                  - "dynamodb:DeleteItem"
+                  - "dynamodb:UpdateItem"
                 Resource: !GetAtt AccountTable.Arn
 
   InvokeCallbackPolicy:
@@ -279,7 +286,7 @@ Resources:
       Roles:
         - !Ref InvokeCallbackRole
 
-  InvokeCallbackLambdaFunction:
+  InvokeCallbackFunction:
     Type: "AWS::Serverless::Function"
     Properties:
       Description: Invoke Callback Lambda handler
@@ -300,8 +307,215 @@ Resources:
               detail:
                 eventName:
                   - CreateManagedAccount
+      Layers:
+        - !Ref DependencyLayer
       Handler: invoke_callback.lambda_handler
       Role: !GetAtt InvokeCallbackRole.Arn
+
+  S3PublicBlockLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${S3PublicBlockFunction}"
+      RetentionInDays: 7
+
+  S3PublicBlockRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+
+  S3PublicBlockPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${S3PublicBlockLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${S3PublicBlockLogGroup}:log-stream:*"
+      Roles:
+        - !Ref S3PublicBlockRole
+
+  S3PublicBlockFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: functions/s3_public_block
+      Description: S3 Public Block Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: s3_public_block
+      Layers:
+        - !Ref DependencyLayer
+      Handler: lambda_handler.handler
+      Role: !GetAtt S3PublicBlockRole.Arn
+
+  DeleteDefaultVpcLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${DeleteDefaultVpcFunction}"
+      RetentionInDays: 7
+
+  DeleteDefaultVpcRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      Policies:
+        - PolicyName: DeleteDefaultVpcPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "ec2:DescribeRegions"
+                Resource: "*"
+
+  DeleteDefaultVpcPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${DeleteDefaultVpcLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${DeleteDefaultVpcLogGroup}:log-stream:*"
+      Roles:
+        - !Ref DeleteDefaultVpcRole
+
+  DeleteDefaultVpcFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: functions/delete_default_vpc
+      Description: Delete Default VPC Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: delete_default_vpc
+      Layers:
+        - !Ref DependencyLayer
+      Handler: lambda_handler.handler
+      MemorySize: 1024 # megabytes
+      Timeout: 300 # 5 minutes
+      Role: !GetAtt DeleteDefaultVpcRole.Arn
+
+  ControlTowerAssumePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: ControlTowerAssumePolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Resource: !Sub "arn:${AWS::Partition}:iam::*:role/AWSControlTowerExecution"
+      Roles:
+        - !Ref S3PublicBlockRole
+        - !Ref DeleteDefaultVpcRole
+
+  DependencyLayer:
+    Type: "AWS::Serverless::LayerVersion"
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: dependencies
+      LicenseInfo: MIT
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.8
+
+  StateMachine:
+    Type: "AWS::Serverless::StateMachine"
+    Properties:
+      Definition:
+        StartAt: ProvisionAccount
+        States:
+          ProvisionAccount:
+            Type: Parallel
+            End: true
+            Branches:
+              - StartAt: S3PublicBlock
+                States:
+                  S3PublicBlock:
+                    Type: Task
+                    Resource: !GetAtt S3PublicBlockFunction.Arn
+                    Retry:
+                      - ErrorEquals:
+                          - "Lambda.ServiceException"
+                          - "Lambda.AWSLambdaException"
+                          - "Lambda.SdkClientException"
+                        IntervalSeconds: 2
+                        MaxAttempts: 6
+                        BackoffRate: 2
+                    TimeoutSeconds: 20
+                    End: true
+              - StartAt: DeleteDefaultVpc
+                States:
+                  DeleteDefaultVpc:
+                    Type: Task
+                    Resource: !GetAtt DeleteDefaultVpcFunction.Arn
+                    Retry:
+                      - ErrorEquals:
+                          - "Lambda.ServiceException"
+                          - "Lambda.AWSLambdaException"
+                          - "Lambda.SdkClientException"
+                        IntervalSeconds: 2
+                        MaxAttempts: 6
+                        BackoffRate: 2
+                    TimeoutSeconds: 300 # 5 minutes
+                    End: true
+      Events:
+        EventBridgeEvent:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: "$.detail.serviceEventDetails.createManagedAccountStatus"
+            Pattern:
+              source:
+                - "aws.controltower"
+              "detail-type":
+                - "AWS Service Event via CloudTrail"
+              detail:
+                eventName:
+                  - CreateManagedAccount
+                serviceEventDetails:
+                  createManagedAccountStatus:
+                    state:
+                      - SUCCEEDED
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: "lambda:InvokeFunction"
+              Resource:
+                - !GetAtt DeleteDefaultVpcFunction.Arn
+                - !GetAtt S3PublicBlockFunction.Arn
+                #- !GetAtt SecurityHubFunction.Arn
+                #- !GetAtt GuardDutyFunction.Arn
+                #- !GetAtt OrganizationPolicies.Arn
+      Type: STANDARD
 
 Outputs:
   ApiUrl:

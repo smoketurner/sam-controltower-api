@@ -1,7 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import date, datetime
 import json
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat() + "Z"
+        return super().default(obj)
 
 
 def build_response(code: int, data: dict = None, headers: dict = None) -> dict:
@@ -18,7 +26,11 @@ def build_response(code: int, data: dict = None, headers: dict = None) -> dict:
     if data is not None:
         response["headers"]["Content-Type"] = "application/json; charset=utf-8"
         response["body"] = json.dumps(
-            data, sort_keys=True, indent=None, separators=(",", ":")
+            data,
+            sort_keys=True,
+            indent=None,
+            separators=(",", ":"),
+            default=DateTimeEncoder,
         )
 
     return response

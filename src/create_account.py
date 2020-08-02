@@ -3,25 +3,25 @@
 
 import json
 import os
+import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
 from jsonschema import validate, ValidationError
 
 from controltowerapi.servicecatalog import ServiceCatalog
-from controltowerapi.dynamodb import DynamoDB
+from controltowerapi.models import AccountModel
 from responses import build_response, error_response
 
-ACCOUNT_TABLE = os.environ["ACCOUNT_TABLE"]
+warnings.filterwarnings("ignore", "No metrics to publish*")
 
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
 
-dynamodb = DynamoDB()
 servicecatalog = ServiceCatalog()
-portfolio_id = servicecatalog.get_ct_portfolio_id()
-servicecatalog.associate_principal(portfolio_id, os.environ["LAMBDA_ROLE_ARN"])
-product = servicecatalog.get_ct_product()
+CT_PORTFOLIO_ID = servicecatalog.get_ct_portfolio_id()
+servicecatalog.associate_principal(CT_PORTFOLIO_ID, os.environ["LAMBDA_ROLE_ARN"])
+CT_PRODUCT = servicecatalog.get_ct_product()
 
 schema = {
     "type": "object",
@@ -58,6 +58,10 @@ def lambda_handler(event, context):
     if not event or "body" not in event:
         return error_response(400, "Unknown event")
 
+    token = event.get("headers", {}).get("authorization")
+    if token != "plock":
+        return error_response(400, "Unknown event")
+
     try:
         body = json.loads(event["body"])
     except ValueError:
@@ -68,8 +72,10 @@ def lambda_handler(event, context):
     except ValidationError as error:
         return error_response(400, error.message)
 
+    account_name = body["AccountName"]
+
     parameters = {
-        "AccountName": body["AccountName"],
+        "AccountName": account_name,
         "AccountEmail": body["AccountEmail"],
         "ManagedOrganizationalUnit": body["ManagedOrganizationalUnit"],
         "SSOUserEmail": body["SSOUserEmail"],
@@ -78,22 +84,28 @@ def lambda_handler(event, context):
     }
 
     try:
-        record_id = servicecatalog.provision_product(product, parameters)
+        AccountModel.get(account_name)
+        return error_response(400, f'Account name "{account_name}" already exists')
+    except AccountModel.DoesNotExist:
+        pass
+
+    try:
+        product = servicecatalog.provision_product(CT_PRODUCT, parameters)
     except Exception as error:
         logger.error(f"Unable to provision product: {str(error)}")
         return error_response(500, "Unable to provision product")
 
     item = {
-        "AccountName": body["AccountName"],
-        "RecordId": record_id,
-        "ManagedOrganizationalUnit": body["ManagedOrganizationalUnit"],
+        "account_name": account_name,
+        "record_id": product["RecordId"],
+        "state": product["Status"],
+        "ou_name": body["ManagedOrganizationalUnit"],
+        "created_at": product["CreatedTime"],
     }
     if "CallbackUrl" in body:
-        item["CallbackUrl"] = body["CallbackUrl"]
+        item["callback_url"] = body["CallbackUrl"]
 
-    try:
-        dynamodb.put_item(ACCOUNT_TABLE, item)
-    except Exception:
-        logger.error("Unable to put account in DynamoDB")
+    account = AccountModel(**item)
+    account.save(AccountModel.account_name.does_not_exist())
 
     return build_response(200, item)

@@ -1,13 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import logging
+
 from aws_lambda_powertools import Logger
 import boto3
 import botocore
 
+
 CT_PORTFOLIO_NAME = "AWS Control Tower Account Factory Portfolio"
 CT_PRODUCT_NAME = "AWS Control Tower Account Factory"
 
+boto3.set_stream_logger("", logging.INFO)
 logger = Logger()
 
 
@@ -73,7 +77,7 @@ class ServiceCatalog:
 
         return data
 
-    def provision_product(self, product: dict, parameters: dict) -> tuple:
+    def provision_product(self, product: dict, parameters: dict) -> dict:
         """
         Provision a new AWS account
         """
@@ -95,9 +99,7 @@ class ServiceCatalog:
             logger.exception("Unable to provision product")
             raise error
 
-        record_id = response.get("RecordDetail", {}).get("RecordId")
-
-        return record_id
+        return response.get("RecordDetail")
 
     def describe_record(self, record_id):
         """
