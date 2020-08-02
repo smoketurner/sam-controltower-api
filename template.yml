@@ -3,6 +3,19 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: "AWS::Serverless-2016-10-31"
 Description: AWS SAM project an API for Control Tower
 
+Parameters:
+  CreatePolicies:
+    Type: String
+    Description: Whether to create organizational best practice policies
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  Regions:
+    Type: CommaDelimitedList
+    Description: Regions to enable for Security Hub and GuardDuty
+    Default: "us-east-1"
+
 Globals:
   Function:
     Runtime: python3.8
@@ -312,6 +325,73 @@ Resources:
       Handler: invoke_callback.lambda_handler
       Role: !GetAtt InvokeCallbackRole.Arn
 
+  OrganizationSetupLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${OrganizationSetupFunction}"
+      RetentionInDays: 7
+
+  OrganizationSetupRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSOrganizationsFullAccess"
+      Policies:
+        - PolicyName: OrganizationSetupPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "guardduty:EnableOrganizationAdminAccount"
+                  - "macie2:EnableOrganizationAdminAccount"
+                  - "servicecatalog:EnableAWSOrganizationsAccess"
+                Resource: "*"
+
+  OrganizationSetupPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${OrganizationSetupLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${OrganizationSetupLogGroup}:log-stream:*"
+      Roles:
+        - !Ref OrganizationSetupRole
+
+  OrganizationSetupFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: Organization Setup Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: organization_setup
+      Layers:
+        - !Ref DependencyLayer
+      Handler: organization_setup.lambda_handler
+      Role: !GetAtt OrganizationSetupRole.Arn
+
+  OrganizationSetup:
+    Type: "Custom::OrganizationSetup"
+    Properties:
+      ServiceToken: !GetAtt OrganizationSetupFunction.Arn
+      CreatePolicies: !Ref CreatePolicies
+
   S3PublicBlockLogGroup:
     Type: "AWS::Logs::LogGroup"
     Properties:
@@ -422,6 +502,119 @@ Resources:
       Timeout: 300 # 5 minutes
       Role: !GetAtt DeleteDefaultVpcRole.Arn
 
+  Route53QueryLogsLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Route53QueryLogsFunction}"
+      RetentionInDays: 7
+
+  Route53QueryLogsRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+
+  Route53QueryLogsPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Route53QueryLogsLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Route53QueryLogsLogGroup}:log-stream:*"
+      Roles:
+        - !Ref Route53QueryLogsRole
+
+  Route53QueryLogsFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: functions/route53_query_logs
+      Description: Route53 Query Logs Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: route53_query_logs
+      Layers:
+        - !Ref DependencyLayer
+      Handler: lambda_handler.handler
+      Role: !GetAtt Route53QueryLogsRole.Arn
+
+  EnableSecurityHubLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${EnableSecurityHubFunction}"
+      RetentionInDays: 7
+
+  EnableSecurityHubRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      Policies:
+        - PolicyName: EnableSecurityHubPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "organizations:DescribeAccount"
+                  - "organizations:ListAccounts"
+                Resource: "*"
+
+  EnableSecurityHubPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EnableSecurityHubLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EnableSecurityHubLogGroup}:log-stream:*"
+      Roles:
+        - !Ref EnableSecurityHubRole
+
+  EnableSecurityHubFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: functions/enable_security_hub
+      Description: Enable Security Hub Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: enable_security_hub
+          REGIONS: !Join [",", !Ref Regions]
+      Layers:
+        - !Ref DependencyLayer
+      Handler: lambda_handler.handler
+      MemorySize: 1024 # megabytes
+      Timeout: 300 # 5 minutes
+      Role: !GetAtt EnableSecurityHubRole.Arn
+
   ControlTowerAssumePolicy:
     Type: "AWS::IAM::Policy"
     Properties:
@@ -435,6 +628,8 @@ Resources:
       Roles:
         - !Ref S3PublicBlockRole
         - !Ref DeleteDefaultVpcRole
+        - !Ref Route53QueryLogsRole
+        - !Ref EnableSecurityHubRole
 
   DependencyLayer:
     Type: "AWS::Serverless::LayerVersion"
@@ -487,6 +682,36 @@ Resources:
                         BackoffRate: 2
                     TimeoutSeconds: 300 # 5 minutes
                     End: true
+              - StartAt: Route53QueryLogs
+                States:
+                  Route53QueryLogs:
+                    Type: Task
+                    Resource: !GetAtt Route53QueryLogsFunction.Arn
+                    Retry:
+                      - ErrorEquals:
+                          - "Lambda.ServiceException"
+                          - "Lambda.AWSLambdaException"
+                          - "Lambda.SdkClientException"
+                        IntervalSeconds: 2
+                        MaxAttempts: 6
+                        BackoffRate: 2
+                    TimeoutSeconds: 300 # 5 minutes
+                    End: true
+              - StartAt: EnableSecurityHub
+                States:
+                  EnableSecurityHub:
+                    Type: Task
+                    Resource: !GetAtt EnableSecurityHubFunction.Arn
+                    Retry:
+                      - ErrorEquals:
+                          - "Lambda.ServiceException"
+                          - "Lambda.AWSLambdaException"
+                          - "Lambda.SdkClientException"
+                        IntervalSeconds: 2
+                        MaxAttempts: 6
+                        BackoffRate: 2
+                    TimeoutSeconds: 300 # 5 minutes
+                    End: true
       Events:
         EventBridgeEvent:
           Type: EventBridgeRule
@@ -512,9 +737,8 @@ Resources:
               Resource:
                 - !GetAtt DeleteDefaultVpcFunction.Arn
                 - !GetAtt S3PublicBlockFunction.Arn
-                #- !GetAtt SecurityHubFunction.Arn
-                #- !GetAtt GuardDutyFunction.Arn
-                #- !GetAtt OrganizationPolicies.Arn
+                - !GetAtt Route53QueryLogsFunction.Arn
+                - !GetAtt EnableSecurityHubFunction.Arn
       Type: STANDARD
 
 Outputs:

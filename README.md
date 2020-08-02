@@ -13,6 +13,7 @@ After a new account has been successfully created, this application will do the 
 
 1. Deletes the [default VPC](https://docs.aws.amazon.com/vpc/latest/userguide/default-vpc.html) in all of the regions
 2. Blocks [S3 public access](https://docs.aws.amazon.com/AmazonS3/latest/dev/access-control-block-public-access.html) on the account
+3. Add a CloudWatch Logs resource policy for Route53 [query logging](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/query-logs.html)
 
 ## Installation
 
@@ -29,9 +30,8 @@ make deploy
 ### New Account Creation
 
 - Enroll the new member account in Security Hub to the master account
-- Add a CloudWatch Logs resource policy for Route53 [query logging](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/query-logs.html)
 
-### Best Practices
+### One-Time Best Practices
 
 - Configure the [Audit Account](https://docs.aws.amazon.com/controltower/latest/userguide/how-control-tower-works.html#what-is-audit) to be the [Security Hub](https://docs.aws.amazon.com/securityhub/latest/userguide/securityhub-accounts.html) master account
 - Configure the [Audit Account](https://docs.aws.amazon.com/controltower/latest/userguide/how-control-tower-works.html#what-is-audit) to be the [GuardDuty](https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_organizations.html) master account
@@ -40,3 +40,9 @@ make deploy
 - Create a new `Network` account with a TransitGateway
 - Create a new `SharedServices` account to host an AWS Service Catalog portfolio shared to the organization
 - Create a VPC product in the service catalog that will automatically attach to the transit gateway and to a private Route53 hosted zone in the account
+- Apply an SCP policy to block common actions
+
+## References
+
+- https://aws.amazon.com/solutions/implementations/customizations-for-aws-control-tower/
+- https://github.com/awslabs/aws-deployment-framework
