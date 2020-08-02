@@ -1,4 +1,4 @@
-.PHONY: setup build deploy format invoke
+.PHONY: setup build deploy format
 
 setup:
 	python3 -m venv .venv
@@ -13,7 +13,4 @@ deploy:
 
 format:
 	black .
-
-invoke:
-	sam local invoke CreateAccountLambdaFunction --profile root-admin -e events/create_account.json
 
