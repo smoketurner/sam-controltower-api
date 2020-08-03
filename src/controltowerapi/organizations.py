@@ -12,6 +12,8 @@ CT_AUDIT_ACCOUNT_NAME = "Audit"
 CT_LOG_ACCOUNT_NAME = "Log archive"
 AI_OPT_OUT_POLICY_NAME = "AllOptOutPolicy"
 
+__all__ = ["Organizations"]
+
 
 class Organizations:
     def __init__(self) -> None:

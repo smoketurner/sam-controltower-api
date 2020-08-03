@@ -7,6 +7,8 @@ import botocore
 
 logger = Logger()
 
+__all__ = ["GuardDuty"]
+
 
 class GuardDuty:
     def __init__(self, region) -> None:

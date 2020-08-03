@@ -7,6 +7,8 @@ import botocore
 
 logger = Logger()
 
+__all__ = ["Macie"]
+
 
 class Macie:
     def __init__(self, region: str) -> None:

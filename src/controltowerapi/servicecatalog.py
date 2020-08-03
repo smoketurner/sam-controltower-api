@@ -9,6 +9,8 @@ CT_PORTFOLIO_NAME = "AWS Control Tower Account Factory Portfolio"
 CT_PRODUCT_NAME = "AWS Control Tower Account Factory"
 logger = Logger()
 
+__all__ = ["ServiceCatalog"]
+
 
 class ServiceCatalog:
     def __init__(self) -> None:

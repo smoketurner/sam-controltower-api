@@ -7,6 +7,8 @@ import botocore
 
 logger = Logger()
 
+__all__ = ["RAM"]
+
 
 class RAM:
     def __init__(self) -> None:

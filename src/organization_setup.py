@@ -7,12 +7,7 @@ import boto3
 from aws_lambda_powertools import Logger, Metrics, Tracer
 from crhelper import CfnResource
 
-from controltowerapi.organizations import Organizations
-from controltowerapi.guardduty import GuardDuty
-from controltowerapi.macie import Macie
-from controltowerapi.servicecatalog import ServiceCatalog
-from controltowerapi.ram import RAM
-
+from controltowerapi import Organizations, GuardDuty, Macie, ServiceCatalog, RAM
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
