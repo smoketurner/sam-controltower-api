@@ -3,6 +3,7 @@
 
 import warnings
 
+import boto3
 from aws_lambda_powertools import Logger, Metrics, Tracer
 from crhelper import CfnResource
 
@@ -44,6 +45,15 @@ def create(event, context):
 
     properties = event.get("ResourceProperties", {})
     regions = properties.get("Regions", [])
+    if not regions:
+        ec2 = boto3.client("ec2")
+        regions = [
+            region["RegionName"]
+            for region in ec2.describe_regions(
+                Filters=[{"Name": "opt-in-status", "Values": ["opt-in-not-required"]}],
+                AllRegions=False,
+            )["Regions"]
+        ]
 
     # enable all organizational policy types
     organizations.enable_all_policy_types()

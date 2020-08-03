@@ -345,6 +345,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - "ec2:DescribeRegions"
                   - "guardduty:EnableOrganizationAdminAccount"
                   - "macie2:EnableOrganizationAdminAccount"
                   - "ram:EnableSharingWithAwsOrganization"
@@ -573,6 +574,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - "ec2:DescribeRegions"
                   - "organizations:DescribeAccount"
                   - "organizations:ListAccounts"
                 Resource: "*"
