@@ -29,18 +29,6 @@ class ServiceCatalog:
                 logger.exception("Unable enable organization access for ServiceCatalog")
                 raise error
 
-    def disable_aws_organizations_access(self) -> None:
-        logger.info("Disabling organizational access for ServiceCatalog")
-        try:
-            self.client.disable_aws_organizations_access()
-            logger.debug("Disabled organizational access for ServiceCatalog")
-        except botocore.exceptions.ClientError as error:
-            if error.response["Error"]["Code"] != "InvalidStateException":
-                logger.exception(
-                    "Unable disable organization access for ServiceCatalog"
-                )
-                raise error
-
     def get_ct_portfolio_id(self) -> str:
         """
         Return the portfolio ID for the Control Tower Account Factory Portfolio

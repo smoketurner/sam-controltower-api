@@ -86,22 +86,6 @@ class Organizations:
                     )
                     raise error
 
-    def disable_aws_service_access(self, principals: list) -> None:
-        """
-        Disable AWS service access in organization
-        """
-        for principal in principals:
-            logger.info(f"Disabling AWS service access for {principal}")
-            try:
-                self.client.disable_aws_service_access(ServicePrincipal=principal)
-                logger.debug(f"Disabled AWS service access for {principal}")
-            except botocore.exceptions.ClientError as error:
-                if error.response["Error"]["Code"] != "ServiceException":
-                    logger.exception(
-                        f"Unable disable AWS service access for {principal}"
-                    )
-                    raise error
-
     def enable_all_policy_types(self) -> None:
         """
         Enables all policy types in an organization
@@ -176,31 +160,6 @@ class Organizations:
 
         return policy_id
 
-    def delete_ai_optout_policy(self) -> None:
-        """
-        Detaches and deletes the AI opt-out policy
-        """
-
-        policy_id = None
-        for policy in self.list_policies("AISERVICES_OPT_OUT_POLICY"):
-            if policy.get("Name") == AI_OPT_OUT_POLICY_NAME:
-                policy_id = policy.get("Id")
-                break
-
-        if not policy_id:
-            logger.info(f"Policy {AI_OPT_OUT_POLICY_NAME} already deleted")
-            return
-
-        self.detach_ai_optout_policy(policy_id)
-
-        try:
-            self.client.delete_policy(PolicyId=policy_id)
-            logger.debug(f"Deleted policy {AI_OPT_OUT_POLICY_NAME} ({policy_id})")
-        except botocore.exceptions.ClientError as error:
-            if error.response["Error"]["Code"] != "PolicyNotFoundException":
-                logger.exception("Unable to delete policy")
-                raise error
-
     def attach_ai_optout_policy(self) -> None:
         """
         Attach the AI opt-out policy to the root
@@ -228,31 +187,6 @@ class Organizations:
                     logger.exception("Unable to attach policy")
                     raise error
 
-    def detach_ai_optout_policy(self, policy_id: str = None) -> None:
-        """
-        Detach the AI opt-out policy from the root
-        """
-        if not policy_id:
-            policy_id = self.get_ai_optout_policy()
-            if not policy_id:
-                logger.warn(f"Unable to find {AI_OPT_OUT_POLICY_NAME} policy")
-                return
-
-        for root in self.list_roots():
-            root_id = root["Id"]
-            logger.info(
-                f"Detaching {AI_OPT_OUT_POLICY_NAME} ({policy_id}) from root {root_id}"
-            )
-            try:
-                self.client.detach_policy(PolicyId=policy_id, TargetId=root_id)
-                logger.debug(
-                    f"Detached {AI_OPT_OUT_POLICY_NAME} ({policy_id}) from root {root_id}"
-                )
-            except botocore.exceptions.ClientError as error:
-                if error.response["Error"]["Code"] != "PolicyNotAttachedException":
-                    logger.exception("Unable to detach policy")
-                    raise error
-
     def register_delegated_administrator(
         self, account_id: str, principals: list
     ) -> None:
@@ -278,31 +212,6 @@ class Organizations:
                 ):
                     logger.exception(
                         f"Unable to register {account_id} as a delegated administrator for {principal}"
-                    )
-                    raise error
-
-    def deregister_delegated_administrator(
-        self, account_id: str, principals: list
-    ) -> None:
-        """
-        Deregister a delegated administrator
-        """
-
-        for principal in principals:
-            logger.info(
-                f"Deregistering {account_id} as a delegated administrator for {principal}"
-            )
-            try:
-                self.client.deregister_delegated_administrator(
-                    AccountId=account_id, ServicePrincipal=principal
-                )
-                logger.debug(
-                    f"Deregistered {account_id} as a delegated administrator for {principal}"
-                )
-            except botocore.exceptions.ClientError as error:
-                if error.response["Error"]["Code"] != "AccountNotRegisteredException":
-                    logger.exception(
-                        f"Unable to deregister {account_id} as a delegated administrator for {principal}"
                     )
                     raise error
 

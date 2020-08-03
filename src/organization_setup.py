@@ -43,15 +43,17 @@ def create(event, context):
 
     properties = event.get("ResourceProperties", {})
     regions = properties.get("Regions", [])
-    create_policies = properties.get("CreatePolicies", "false") == "true"
 
+    # enable all organizational policy types
     organizations.enable_all_policy_types()
 
-    if create_policies:
-        organizations.attach_ai_optout_policy()
+    # attach an AI service opt-out policy
+    organizations.attach_ai_optout_policy()
 
+    # enable Service Catalog access to the organization
     ServiceCatalog().enable_aws_organizations_access()
 
+    # enable various AWS service principla access to the organization
     organizations.enable_aws_service_access(SERVICE_ACCESS_PRINCIPALS)
 
     audit_account_id = organizations.get_audit_account_id()
@@ -61,11 +63,17 @@ def create(event, context):
 
     for region in regions:
         guardduty = GuardDuty(region)
+
+        # delegate GuardDuty administration to the Control Tower Audit account
         guardduty.enable_organization_admin_account(audit_account_id)
+
+        # update the GuartDuty organization configuration to register new accounts automatically
         guardduty.update_organization_configuration(audit_account_id)
 
+        # delegate Macie administration to the Control Tower Audit account
         Macie(region).enable_organization_admin_account(audit_account_id)
 
+    # Register the Control Tower Audit account as a delegated administer on AWS services
     organizations.register_delegated_administrator(
         audit_account_id, DELEGATED_ADMINISTRATOR_PRINCIPALS
     )
@@ -77,26 +85,6 @@ def create(event, context):
 @helper.delete
 def delete(event, context):
     logger.info("Got Delete")
-
-    properties = event.get("ResourceProperties", {})
-    regions = properties.get("Regions", [])
-
-    organizations.delete_ai_optout_policy()
-    ServiceCatalog().disable_aws_organizations_access()
-
-    audit_account_id = organizations.get_audit_account_id()
-    if audit_account_id:
-        for region in regions:
-            GuardDuty(region).disable_organization_admin_account(audit_account_id)
-            Macie(region).disable_organization_admin_account(audit_account_id)
-
-        organizations.deregister_delegated_administrator(
-            audit_account_id, DELEGATED_ADMINISTRATOR_PRINCIPALS
-        )
-
-    organizations.disable_aws_service_access(SERVICE_ACCESS_PRINCIPALS)
-
-    return context.invoked_function_arn
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)

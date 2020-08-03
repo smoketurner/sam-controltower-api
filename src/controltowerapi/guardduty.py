@@ -33,24 +33,10 @@ class GuardDuty:
                 )
                 raise error
 
-    def disable_organization_admin_account(self, account_id: str) -> None:
-        logger.info(
-            f"Disabling account {account_id} to be GuardDuty admin account in {self.region}"
-        )
-        try:
-            self.client.disable_organization_admin_account(AdminAccountId=account_id)
-            logger.debug(
-                f"Disabled account {account_id} to be GuardDuty admin account in {self.region}"
-            )
-        except botocore.exceptions.ClientError as error:
-            if error.response["Error"]["Code"] != "BadRequestException":
-                logger.exception(
-                    f"Unable to disable account {account_id} to be GuardDuty admin account in {self.region}"
-                )
-                raise error
-
     def update_organization_configuration(self, account_id) -> None:
-
+        """
+        Update the organization configuration to auto-enroll new accounts in GuardDuty
+        """
         sts = boto3.client("sts")
 
         role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"

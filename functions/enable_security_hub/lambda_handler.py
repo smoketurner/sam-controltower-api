@@ -63,11 +63,9 @@ def handler(event, context):
         logger.error("No regions defined to enable Security Hub")
         return
 
-    logger.info(
-        f"Enabling Security Hub in {audit_account_id} in: {SECURITY_HUB_REGIONS}"
-    )
-
     # 1. Assume role in new account and enable Security Hub
+
+    logger.info(f"Enabling Security Hub in {account_id} in: {SECURITY_HUB_REGIONS}")
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
     response = sts.assume_role(RoleArn=role_arn, RoleSessionName="enable_security_hub")
@@ -103,6 +101,10 @@ def handler(event, context):
 
     # 2. Assume role into Audit account and enable Security Hub, create and invite the new account
 
+    logger.info(
+        f"Enabling Security Hub in {audit_account_id} in: {SECURITY_HUB_REGIONS}"
+    )
+
     role_arn = f"arn:aws:iam::{audit_account_id}:role/AWSControlTowerExecution"
     response = sts.assume_role(RoleArn=role_arn, RoleSessionName="enable_security_hub")
 
@@ -130,37 +132,41 @@ def handler(event, context):
                 continue
 
         logger.info(
-            f"Creating member {account_id} to Security Hub in {audit_account_id} in {region}"
+            f"Creating member {account_id} in Security Hub in {audit_account_id} in {region}"
         )
         try:
             client.create_members(
                 AccountDetails=[{"AccountId": account_id, "Email": account_email}]
             )
             logger.debug(
-                f"Created member {account_id} to Security Hub in {audit_account_id} in {region}"
+                f"Created member {account_id} in Security Hub in {audit_account_id} in {region}"
             )
         except botocore.exceptions.ClientError as error:
             if error.response["Error"]["Code"] != "ResourceConflictException":
                 logger.exception(
-                    f"Unable to create member {account_id} to Security Hub in {region}"
+                    f"Unable to create member {account_id} in Security Hub in {region}"
                 )
                 continue
 
         logger.info(
-            f"Inviting member {account_id} to Security Hub in {audit_account_id} in {region}"
+            f"Inviting member {account_id} in Security Hub in {audit_account_id} in {region}"
         )
         try:
             client.invite_members(AccountIds=[account_id])
             logger.debug(
-                f"Invited member {account_id} to Security Hub in {audit_account_id} in {region}"
+                f"Invited member {account_id} in Security Hub in {audit_account_id} in {region}"
             )
         except botocore.exceptions.ClientError as error:
             if error.response["Error"]["Code"] != "ResourceConflictException":
                 logger.exception(
-                    f"Unable to invite member {account_id} to Security Hub in {region}"
+                    f"Unable to invite member {account_id} in Security Hub in {region}"
                 )
 
     # 3. Assume role in new account to accept invitation from Audit account
+
+    logger.info(
+        f"Accepting Security Hub invitation in {account_id} in: {SECURITY_HUB_REGIONS}"
+    )
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
     response = sts.assume_role(RoleArn=role_arn, RoleSessionName="accept_invitation")

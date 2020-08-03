@@ -32,19 +32,3 @@ class Macie:
                     f"Unable to enable account {account_id} to be Macie admin account in {self.region}"
                 )
                 raise error
-
-    def disable_organization_admin_account(self, account_id):
-        logger.info(
-            f"Disabling account {account_id} to be Macie admin account in {self.region}"
-        )
-        try:
-            self.client.disable_organization_admin_account(adminAccountId=account_id)
-            logger.debug(
-                f"Disabled account {account_id} to be Macie admin account in {self.region}"
-            )
-        except botocore.exceptions.ClientError as error:
-            if error.response["Error"]["Code"] != "ConflictException":
-                logger.exception(
-                    f"Unable to disable account {account_id} to be Macie admin account in {self.region}"
-                )
-                raise error

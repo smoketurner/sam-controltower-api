@@ -4,13 +4,6 @@ Transform: "AWS::Serverless-2016-10-31"
 Description: AWS SAM project an API for Control Tower
 
 Parameters:
-  CreatePolicies:
-    Type: String
-    Description: Whether to create organizational best practice policies
-    Default: "true"
-    AllowedValues:
-      - "true"
-      - "false"
   Regions:
     Type: CommaDelimitedList
     Description: Regions to enable for Security Hub and GuardDuty
@@ -352,11 +345,8 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - "guardduty:DisableOrganizationAdminAccount"
                   - "guardduty:EnableOrganizationAdminAccount"
-                  - "macie2:DisableOrganizationAdminAccount"
                   - "macie2:EnableOrganizationAdminAccount"
-                  - "servicecatalog:DisableAWSOrganizationsAccess"
                   - "servicecatalog:EnableAWSOrganizationsAccess"
                 Resource: "*"
 
@@ -394,7 +384,6 @@ Resources:
     Type: "Custom::OrganizationSetup"
     Properties:
       ServiceToken: !GetAtt OrganizationSetupFunction.Arn
-      CreatePolicies: !Ref CreatePolicies
       Regions: !Join [",", !Ref Regions]
 
   S3PublicBlockLogGroup:
