@@ -352,8 +352,11 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - "guardduty:DisableOrganizationAdminAccount"
                   - "guardduty:EnableOrganizationAdminAccount"
+                  - "macie2:DisableOrganizationAdminAccount"
                   - "macie2:EnableOrganizationAdminAccount"
+                  - "servicecatalog:DisableAWSOrganizationsAccess"
                   - "servicecatalog:EnableAWSOrganizationsAccess"
                 Resource: "*"
 
@@ -383,6 +386,7 @@ Resources:
           POWERTOOLS_SERVICE_NAME: organization_setup
       Layers:
         - !Ref DependencyLayer
+      Timeout: 30 # seconds
       Handler: organization_setup.lambda_handler
       Role: !GetAtt OrganizationSetupRole.Arn
 
@@ -391,6 +395,7 @@ Resources:
     Properties:
       ServiceToken: !GetAtt OrganizationSetupFunction.Arn
       CreatePolicies: !Ref CreatePolicies
+      Regions: !Join [",", !Ref Regions]
 
   S3PublicBlockLogGroup:
     Type: "AWS::Logs::LogGroup"
@@ -630,6 +635,7 @@ Resources:
         - !Ref DeleteDefaultVpcRole
         - !Ref Route53QueryLogsRole
         - !Ref EnableSecurityHubRole
+        - !Ref OrganizationSetupRole
 
   DependencyLayer:
     Type: "AWS::Serverless::LayerVersion"

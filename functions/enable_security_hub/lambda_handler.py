@@ -64,7 +64,7 @@ def handler(event, context):
         return
 
     logger.info(
-        f"Enabling Security Hub in {audit_account_id} in : {SECURITY_HUB_REGIONS}"
+        f"Enabling Security Hub in {audit_account_id} in: {SECURITY_HUB_REGIONS}"
     )
 
     # 1. Assume role in new account and enable Security Hub
@@ -82,9 +82,10 @@ def handler(event, context):
 
     for region in SECURITY_HUB_REGIONS:
         client = session.client("securityhub", region_name=region)
+        logger.info(f"Enabling Security Hub in {account_id} in {region}")
         try:
             client.enable_security_hub()
-            logger.info(f"Enabled Security Hub in {account_id} in {region}")
+            logger.debug(f"Enabled Security Hub in {account_id} in {region}")
         except botocore.exceptions.ClientError as error:
             if error.response["Error"]["Code"] != "ResourceConflictException":
                 logger.exception(
@@ -116,9 +117,11 @@ def handler(event, context):
             continue
 
         client = session.client("securityhub", region_name=region)
+
+        logger.info(f"Enabling Security Hub in {audit_account_id} in {region}")
         try:
             client.enable_security_hub()
-            logger.info(f"Enabled Security Hub in {audit_account_id} in {region}")
+            logger.debug(f"Enabled Security Hub in {audit_account_id} in {region}")
         except botocore.exceptions.ClientError as error:
             if error.response["Error"]["Code"] != "ResourceConflictException":
                 logger.exception(
@@ -126,29 +129,35 @@ def handler(event, context):
                 )
                 continue
 
+        logger.info(
+            f"Creating member {account_id} to Security Hub in {audit_account_id} in {region}"
+        )
         try:
             client.create_members(
                 AccountDetails=[{"AccountId": account_id, "Email": account_email}]
             )
-            logger.info(
+            logger.debug(
                 f"Created member {account_id} to Security Hub in {audit_account_id} in {region}"
             )
         except botocore.exceptions.ClientError as error:
             if error.response["Error"]["Code"] != "ResourceConflictException":
                 logger.exception(
-                    f"Unable to create members for {account_id} in Security Hub in {region}"
+                    f"Unable to create member {account_id} to Security Hub in {region}"
                 )
                 continue
 
+        logger.info(
+            f"Inviting member {account_id} to Security Hub in {audit_account_id} in {region}"
+        )
         try:
             client.invite_members(AccountIds=[account_id])
-            logger.info(
+            logger.debug(
                 f"Invited member {account_id} to Security Hub in {audit_account_id} in {region}"
             )
         except botocore.exceptions.ClientError as error:
             if error.response["Error"]["Code"] != "ResourceConflictException":
                 logger.exception(
-                    f"Unable to invite members for {account_id} in Security Hub in {region}"
+                    f"Unable to invite member {account_id} to Security Hub in {region}"
                 )
 
     # 3. Assume role in new account to accept invitation from Audit account
@@ -172,9 +181,12 @@ def handler(event, context):
         page_iterator = paginator.paginate()
         for page in page_iterator:
             for invitation in page.get("Invitations", []):
+                logger.info(
+                    f"Accepting invitation for {account_id} from {audit_account_id} in {region}"
+                )
                 client.accept_invitation(
                     MasterId=audit_account_id, InvitationId=invitation["InvitationId"]
                 )
-                logger.info(
-                    f"Account {account_id} accepted invitation from {audit_account_id} in {region}"
+                logger.debug(
+                    f"Accepted invitation for {account_id} from {audit_account_id} in {region}"
                 )

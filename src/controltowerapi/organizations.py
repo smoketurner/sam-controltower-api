@@ -70,10 +70,44 @@ class Organizations:
         self.roots = roots
         return roots
 
+    def enable_aws_service_access(self, principals: list) -> None:
+        """
+        Enable AWS service access in organization
+        """
+        for principal in principals:
+            logger.info(f"Enabling AWS service access for {principal}")
+            try:
+                self.client.enable_aws_service_access(ServicePrincipal=principal)
+                logger.debug(f"Enabled AWS service access for {principal}")
+            except botocore.exceptions.ClientError as error:
+                if error.response["Error"]["Code"] != "ServiceException":
+                    logger.exception(
+                        f"Unable enable AWS service access for {principal}"
+                    )
+                    raise error
+
+    def disable_aws_service_access(self, principals: list) -> None:
+        """
+        Disable AWS service access in organization
+        """
+        for principal in principals:
+            logger.info(f"Disabling AWS service access for {principal}")
+            try:
+                self.client.disable_aws_service_access(ServicePrincipal=principal)
+                logger.debug(f"Disabled AWS service access for {principal}")
+            except botocore.exceptions.ClientError as error:
+                if error.response["Error"]["Code"] != "ServiceException":
+                    logger.exception(
+                        f"Unable disable AWS service access for {principal}"
+                    )
+                    raise error
+
     def enable_all_policy_types(self) -> None:
         """
         Enables all policy types in an organization
         """
+        logger.info("Enabling all policy types in organization")
+
         for root in self.list_roots():
             root_id = root["Id"]
             disabled_types = [
@@ -98,6 +132,8 @@ class Organizations:
                     ):
                         logger.exception("Unable to enable policy type")
                         raise error
+
+        logger.debug("Enabled all policy types in organization")
 
     def get_ai_optout_policy(self) -> str:
         """
@@ -218,27 +254,57 @@ class Organizations:
                     raise error
 
     def register_delegated_administrator(
-        self, account_id: str, service_principal: str
+        self, account_id: str, principals: list
     ) -> None:
         """
         Register a delegated administrator
         """
 
-        logger.info(
-            f"Registering {account_id} as a delegated administrator for {service_principal}"
-        )
+        for principal in principals:
+            logger.info(
+                f"Registering {account_id} as a delegated administrator for {principal}"
+            )
+            try:
+                self.client.register_delegated_administrator(
+                    AccountId=account_id, ServicePrincipal=principal
+                )
+                logger.debug(
+                    f"Registered {account_id} as a delegated administrator for {principal}"
+                )
+            except botocore.exceptions.ClientError as error:
+                if (
+                    error.response["Error"]["Code"]
+                    != "AccountAlreadyRegisteredException"
+                ):
+                    logger.exception(
+                        f"Unable to register {account_id} as a delegated administrator for {principal}"
+                    )
+                    raise error
 
-        try:
-            self.client.register_delegated_administrator(
-                AccountId=account_id, ServicePrincipal=service_principal
+    def deregister_delegated_administrator(
+        self, account_id: str, principals: list
+    ) -> None:
+        """
+        Deregister a delegated administrator
+        """
+
+        for principal in principals:
+            logger.info(
+                f"Deregistering {account_id} as a delegated administrator for {principal}"
             )
-            logger.debug(
-                f"Registered {account_id} as a delegated administrator for {service_principal}"
-            )
-        except botocore.exceptions.ClientError as error:
-            if error.response["Error"]["Code"] != "AccountAlreadyRegisteredException":
-                logger.exception("Unable to register delegated administrator")
-                raise error
+            try:
+                self.client.deregister_delegated_administrator(
+                    AccountId=account_id, ServicePrincipal=principal
+                )
+                logger.debug(
+                    f"Deregistered {account_id} as a delegated administrator for {principal}"
+                )
+            except botocore.exceptions.ClientError as error:
+                if error.response["Error"]["Code"] != "AccountNotRegisteredException":
+                    logger.exception(
+                        f"Unable to deregister {account_id} as a delegated administrator for {principal}"
+                    )
+                    raise error
 
     def get_audit_account_id(self) -> str:
         """
