@@ -46,3 +46,8 @@ make deploy
 
 - https://aws.amazon.com/solutions/implementations/customizations-for-aws-control-tower/
 - https://github.com/awslabs/aws-deployment-framework
+- https://aws.amazon.com/blogs/mt/how-to-automate-the-creation-of-multiple-accounts-in-aws-control-tower/
+- https://aws.amazon.com/blogs/mt/enabling-aws-identity-and-access-analyzer-on-aws-control-tower-accounts/
+- https://aws.amazon.com/blogs/mt/serverless-transit-network-orchestrator-stno-in-control-tower/
+- https://aws.amazon.com/blogs/mt/automating-aws-security-hub-alerts-with-aws-control-tower-lifecycle-events/
+- https://aws.amazon.com/blogs/mt/using-lifecycle-events-to-track-aws-control-tower-actions-and-trigger-automated-workflows/

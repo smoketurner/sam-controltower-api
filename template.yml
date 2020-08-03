@@ -347,6 +347,7 @@ Resources:
                 Action:
                   - "guardduty:EnableOrganizationAdminAccount"
                   - "macie2:EnableOrganizationAdminAccount"
+                  - "ram:EnableSharingWithAwsOrganization"
                   - "servicecatalog:EnableAWSOrganizationsAccess"
                 Resource: "*"
 

@@ -10,6 +10,7 @@ from controltowerapi.organizations import Organizations
 from controltowerapi.guardduty import GuardDuty
 from controltowerapi.macie import Macie
 from controltowerapi.servicecatalog import ServiceCatalog
+from controltowerapi.ram import RAM
 
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
@@ -53,8 +54,11 @@ def create(event, context):
     # enable Service Catalog access to the organization
     ServiceCatalog().enable_aws_organizations_access()
 
-    # enable various AWS service principla access to the organization
+    # enable various AWS service principal access to the organization
     organizations.enable_aws_service_access(SERVICE_ACCESS_PRINCIPALS)
+
+    # enable RAM sharing to the organization
+    RAM().enable_sharing_with_aws_organization()
 
     audit_account_id = organizations.get_audit_account_id()
     if not audit_account_id:
