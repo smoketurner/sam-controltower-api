@@ -2,20 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import json
-import logging
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
 import boto3
 
-boto3.set_stream_logger("", logging.INFO)
+from sts import STS
+
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
-sts = boto3.client("sts")
+sts = STS()
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)
@@ -29,15 +28,7 @@ def handler(event, context):
         return
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
-    response = sts.assume_role(
-        RoleArn=role_arn, RoleSessionName="route53_resource_policy"
-    )
-
-    session = boto3.session.Session(
-        aws_access_key_id=response["Credentials"]["AccessKeyId"],
-        aws_secret_access_key=response["Credentials"]["SecretAccessKey"],
-        aws_session_token=response["Credentials"]["SessionToken"],
-    )
+    role = sts.assume_role(role_arn, "route53_resource_policy")
 
     policy = {
         "Version": "2012-10-17",
@@ -52,7 +43,7 @@ def handler(event, context):
         ],
     }
 
-    client = session.client("logs")
+    client = role.client("logs")
     client.put_resource_policy(
         policyName="AWSServiceRoleForRoute53", policyDocument=json.dumps(policy)
     )

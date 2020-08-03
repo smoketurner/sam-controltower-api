@@ -19,7 +19,6 @@ warnings.filterwarnings("ignore", "No metrics to publish*")
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
 helper = CfnResource(json_logging=True, log_level="INFO", boto_level="INFO")
 organizations = Organizations()
 

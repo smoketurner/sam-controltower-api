@@ -13,7 +13,6 @@ warnings.filterwarnings("ignore", "No metrics to publish*")
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
 servicecatalog = ServiceCatalog()
 
 

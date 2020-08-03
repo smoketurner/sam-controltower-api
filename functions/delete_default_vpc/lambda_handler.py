@@ -7,7 +7,6 @@
 # see https://github.com/awslabs/aws-deployment-framework/blob/master/src/lambda_codebase/initial_commit/bootstrap_repository/adf-build/provisioner/src/vpc.py
 
 from concurrent.futures import ThreadPoolExecutor
-import logging
 import warnings
 import time
 
@@ -15,13 +14,11 @@ from aws_lambda_powertools import Logger, Metrics, Tracer
 import boto3
 import botocore
 
-boto3.set_stream_logger("", logging.INFO)
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
 sts = boto3.client("sts")
 ec2 = boto3.client("ec2")
 

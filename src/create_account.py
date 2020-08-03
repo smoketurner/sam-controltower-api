@@ -17,8 +17,8 @@ warnings.filterwarnings("ignore", "No metrics to publish*")
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
 servicecatalog = ServiceCatalog()
+
 CT_PORTFOLIO_ID = servicecatalog.get_ct_portfolio_id()
 servicecatalog.associate_principal(CT_PORTFOLIO_ID, os.environ["LAMBDA_ROLE_ARN"])
 CT_PRODUCT = servicecatalog.get_ct_product()

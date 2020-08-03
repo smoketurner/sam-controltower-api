@@ -2,50 +2,23 @@
 # -*- coding: utf-8 -*-
 
 import os
-import logging
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
 import boto3
 
+from organizations import Organizations
 from sts import STS
 from securityhub import SecurityHub
 
-boto3.set_stream_logger("", logging.INFO)
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
-CT_AUDIT_ACCOUNT_NAME = "Audit"
 SECURITY_HUB_REGIONS = os.environ.get("REGIONS", "").split(",")
-
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
-organizations = boto3.client("organizations")
+organizations = Organizations()
 sts = STS()
-
-
-@tracer.capture_method
-def get_audit_account_id() -> str:
-    """
-    Return the Control Tower Audit account
-    """
-    paginator = organizations.get_paginator("list_accounts")
-    page_iterator = paginator.paginate()
-    for page in page_iterator:
-        for account in page.get("Accounts", []):
-            if account.get("Name") == CT_AUDIT_ACCOUNT_NAME:
-                return account["Id"]
-    return None
-
-
-@tracer.capture_method
-def get_account_email(account_id) -> str:
-    """
-    Return the email address for an account
-    """
-    response = organizations.describe_account(AccountId=account_id)
-    return response.get("Account", {}).get("Email")
 
 
 @tracer.capture_method
@@ -78,7 +51,7 @@ def handler(event, context):
         logger.error("Account ID not found in event")
         return
 
-    audit_account_id = get_audit_account_id()
+    audit_account_id = organizations.get_audit_account_id()
     if not audit_account_id:
         logger.error("Control Tower Audit account not found")
         return
@@ -114,7 +87,7 @@ def handler(event, context):
             f"Failed to enable Security Hub in {account_id} in regions: {failed_regions}"
         )
 
-    account_email = get_account_email(account_id)
+    account_email = organizations.get_account_email(account_id)
 
     # 2. Assume role into Audit account and enable Security Hub, create and invite the new account
 

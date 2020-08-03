@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import logging
-
 from aws_lambda_powertools import Logger
-import boto3
 import botocore
 
-
-boto3.set_stream_logger("", logging.INFO)
 logger = Logger()
 
 

@@ -1,20 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import logging
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
 import boto3
 
-boto3.set_stream_logger("", logging.INFO)
+from sts import STS
+
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-
-sts = boto3.client("sts")
+sts = STS()
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)
@@ -28,15 +27,9 @@ def handler(event, context):
         return
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
-    response = sts.assume_role(RoleArn=role_arn, RoleSessionName="s3_public_block")
+    role = sts.assume_role(role_arn, "s3_public_block")
 
-    session = boto3.session.Session(
-        aws_access_key_id=response["Credentials"]["AccessKeyId"],
-        aws_secret_access_key=response["Credentials"]["SecretAccessKey"],
-        aws_session_token=response["Credentials"]["SessionToken"],
-    )
-
-    client = session.client("s3control")
+    client = role.client("s3control")
     client.put_public_access_block(
         PublicAccessBlockConfiguration={
             "BlockPublicAcls": True,
