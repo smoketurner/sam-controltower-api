@@ -58,10 +58,6 @@ def lambda_handler(event, context):
     if not event or "body" not in event:
         return error_response(400, "Unknown event")
 
-    token = event.get("headers", {}).get("authorization")
-    if token != "plock":
-        return error_response(400, "Unknown event")
-
     try:
         body = json.loads(event["body"])
     except ValueError:
