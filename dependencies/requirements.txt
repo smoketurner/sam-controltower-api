@@ -1,5 +1,5 @@
 aws-lambda-powertools==1.0.2
-boto3==1.14.34
+boto3==1.14.35
 jsonschema==3.2.0
 pynamodb==4.3.2
 crhelper==2.0.6
