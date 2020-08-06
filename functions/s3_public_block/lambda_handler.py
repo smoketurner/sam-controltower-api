@@ -4,9 +4,8 @@
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
-import boto3
 
-from sts import STS
+from .sts import STS
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 

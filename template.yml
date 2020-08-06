@@ -22,6 +22,16 @@ Globals:
         LOG_LEVEL: INFO
 
 Resources:
+  CreateAccountSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: "Create Account API Key"
+      GenerateSecretString:
+        SecretStringTemplate: "{}"
+        GenerateStringKey: token
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+
   CreateAccountLogGroup:
     Type: "AWS::Logs::LogGroup"
     Properties:
@@ -64,6 +74,9 @@ Resources:
                   - "dynamodb:DescribeTable"
                   - "dynamodb:PutItem"
                 Resource: !GetAtt AccountTable.Arn
+              - Effect: Allow
+                Action: "secretsmanager:GetSecretValue"
+                Resource: !Ref CreateAccountSecret
 
   CreateAccountLogPolicy:
     Type: "AWS::IAM::Policy"
@@ -152,6 +165,7 @@ Resources:
           POWERTOOLS_SERVICE_NAME: create_account
           LAMBDA_ROLE_ARN: !GetAtt CreateAccountRole.Arn
           ACCOUNT_TABLE: !Ref AccountTable
+          SECRET_ID: !Ref CreateAccountSecret
       Events:
         HttpApiEvent:
           Type: HttpApi
@@ -233,6 +247,7 @@ Resources:
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: account_status
+          SECRET_ID: !Ref CreateAccountSecret
       Events:
         HttpApiEvent:
           Type: HttpApi

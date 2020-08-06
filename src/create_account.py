@@ -6,11 +6,11 @@ import os
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
-from jsonschema import validate, ValidationError
+import fastjsonschema
 
 from controltowerapi.servicecatalog import ServiceCatalog
 from controltowerapi.models import AccountModel
-from responses import build_response, error_response
+from .responses import build_response, error_response, authenticate_request
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
@@ -23,7 +23,7 @@ CT_PORTFOLIO_ID = servicecatalog.get_ct_portfolio_id()
 servicecatalog.associate_principal(CT_PORTFOLIO_ID, os.environ["LAMBDA_ROLE_ARN"])
 CT_PRODUCT = servicecatalog.get_ct_product()
 
-schema = {
+SCHEMA = {
     "type": "object",
     "properties": {
         "AccountName": {
@@ -38,6 +38,7 @@ schema = {
         "SSOUserFirstName": {"type": "string"},
         "SSOUserLastName": {"type": "string"},
         "CallbackUrl": {"type": "string", "format": "uri"},
+        "CallbackSecret": {"type": "string"},
     },
     "required": [
         "AccountName",
@@ -48,19 +49,19 @@ schema = {
         "SSOUserLastName",
     ],
 }
+VALIDATE = fastjsonschema.compile(SCHEMA)
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
 def lambda_handler(event, context):
-
     if not event or "body" not in event:
         return error_response(400, "Unknown event")
 
-    token = event.get("headers", {}).get("authorization")
-    if token != "plock":
-        return error_response(400, "Unknown event")
+    result = authenticate_request(event)
+    if result is not True:
+        return result
 
     try:
         body = json.loads(event["body"])
@@ -68,8 +69,8 @@ def lambda_handler(event, context):
         return error_response(400, "Unable to parse JSON body")
 
     try:
-        validate(instance=body, schema=schema)
-    except ValidationError as error:
+        VALIDATE(body)
+    except fastjsonschema.JsonSchemaException as error:
         return error_response(400, error.message)
 
     account_name = body["AccountName"]
@@ -104,6 +105,8 @@ def lambda_handler(event, context):
     }
     if "CallbackUrl" in body:
         item["callback_url"] = body["CallbackUrl"]
+    if "CallbackSecret" in body:
+        item["callback_secret"] = body["CallbackSecret"]
 
     account = AccountModel(**item)
     account.save(AccountModel.account_name.does_not_exist())

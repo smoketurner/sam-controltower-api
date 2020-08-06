@@ -20,4 +20,5 @@ class AccountModel(Model):
     ou_id = UnicodeAttribute()
     state = UnicodeAttribute()
     callback_url = UnicodeAttribute()
+    callback_secret = UnicodeAttribute()
     created_at = UTCDateTimeAttribute()

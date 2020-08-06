@@ -6,7 +6,7 @@ import warnings
 from aws_lambda_powertools import Logger, Metrics, Tracer
 
 from controltowerapi.servicecatalog import ServiceCatalog
-from responses import build_response, error_response
+from .responses import build_response, error_response, authenticate_request
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
@@ -23,6 +23,10 @@ def lambda_handler(event, context):
 
     if not event or "pathParameters" not in event:
         return error_response(400, "Unknown event")
+
+    result = authenticate_request(event)
+    if result is not True:
+        return result
 
     record_id = event.get("pathParameters", {}).get("recordId")
 

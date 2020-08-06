@@ -7,9 +7,9 @@ import warnings
 from aws_lambda_powertools import Logger, Metrics, Tracer
 import boto3
 
-from organizations import Organizations
-from sts import STS
-from securityhub import SecurityHub
+from .organizations import Organizations
+from .sts import STS
+from .securityhub import SecurityHub
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
@@ -29,7 +29,7 @@ def get_regions() -> list:
     if SECURITY_HUB_REGIONS:
         regions = SECURITY_HUB_REGIONS
     else:
-        logger.warn("No regions defined so using all regions")
+        logger.warn("SECURITY_HUB_REGIONS not defined, using all regions")
         ec2 = boto3.client("ec2")
         regions = [
             region["RegionName"]
@@ -91,9 +91,7 @@ def handler(event, context):
 
     # 2. Assume role into Audit account and enable Security Hub, create and invite the new account
 
-    logger.info(
-        f"Enabling Security Hub in {audit_account_id} in: {SECURITY_HUB_REGIONS}"
-    )
+    logger.info(f"Enabling Security Hub in {audit_account_id} in: {regions}")
 
     role_arn = f"arn:aws:iam::{audit_account_id}:role/AWSControlTowerExecution"
     role = sts.assume_role(role_arn, "enable_security_hub")
