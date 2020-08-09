@@ -63,6 +63,7 @@ def create_account(account):
             actions=[
                 AccountModel.record_id.set(product["RecordId"]),
                 AccountModel.created_at.set(product["CreatedTime"]),
+                AccountModel.updated_at.set(product["UpdatedTime"]),
                 AccountModel.status.set(product["Status"]),
             ],
             condition=(AccountModel.status == "QUEUED"),
@@ -74,6 +75,7 @@ def create_account(account):
                 == "ConditionalCheckFailedException"
             ):
                 logger.warn("Account status was not QUEUED")
+        raise error
 
 
 @tracer.capture_method

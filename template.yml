@@ -33,54 +33,6 @@ Resources:
         ExcludeCharacters: '"@/\'
         ExcludePunctuation: true
 
-  CreateAccountLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${CreateAccountFunction}"
-      RetentionInDays: 7
-
-  CreateAccountRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-      Policies:
-        - PolicyName: CreateAccountPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: "secretsmanager:GetSecretValue"
-                Resource: !Ref CreateAccountSecret
-              - Effect: Allow
-                Action: "sqs:SendMessage"
-                Resource: !GetAtt AccountQueue.Arn
-
-  CreateAccountLogPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CreateAccountLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CreateAccountLogGroup}:log-stream:*"
-      Roles:
-        - !Ref CreateAccountRole
-
   # see https://docs.aws.amazon.com/controltower/latest/userguide/account-factory.html#automated-provisioning
   ControlTowerAccountFactoryPolicy:
     Type: "AWS::IAM::Policy"
@@ -127,7 +79,7 @@ Resources:
               - "sso:DescribeRegisteredRegions"
             Resource: "*"
       Roles:
-        - !Ref QueueProcessorRole
+        - !Ref QueueProcessorFunctionRole
 
   CreateAccountFunction:
     Type: "AWS::Serverless::Function"
@@ -135,7 +87,7 @@ Resources:
       Description: Create Account Lambda handler
       Environment:
         Variables:
-          POWERTOOLS_SERVICE_NAME: create_account
+          POWERTOOLS_SERVICE_NAME: apigw_account_create
           ACCOUNT_QUEUE_URL: !Ref AccountQueue
           SECRET_ID: !Ref ApiKeySecret
       Events:
@@ -144,10 +96,14 @@ Resources:
           Properties:
             Path: /v1/accounts
             Method: POST
-      Handler: create_account.lambda_handler
+      Handler: apigw_account_create.lambda_handler
       Layers:
         - !Ref DependencyLayer
-      Role: !GetAtt CreateAccountRole.Arn
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref CreateAccountSecret
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt AccountQueue.Arn
 
   AccountTable:
     Type: "AWS::DynamoDB::Table"
@@ -193,12 +149,12 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !GetAtt CreateAccountRole.Arn
+              AWS: !GetAtt CreateAccountFunctionRole.Arn
             Action: "sqs:SendMessage"
             Resource: !GetAtt AccountQueue.Arn
           - Effect: Allow
             Principal:
-              AWS: !GetAtt QueueProcessorRole.Arn
+              AWS: !GetAtt QueueProcessorFunctionRole.Arn
             Action:
               - "sqs:DeleteMessage"
               - "sqs:GetQueueAttributes"
@@ -206,55 +162,6 @@ Resources:
             Resource: !GetAtt AccountQueue.Arn
       Queues:
         - !Ref AccountQueue
-
-  QueueProcessorLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${QueueProcessorFunction}"
-      RetentionInDays: 7
-
-  QueueProcessorRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-      Policies:
-        - PolicyName: QueueProcessorPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "servicecatalog:ListPortfolios"
-                  - "servicecatalog:SearchProducts"
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - "servicecatalog:DescribeProduct"
-                  - "servicecatalog:ProvisionProduct"
-                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:product/*"
-              - Effect: Allow
-                Action: "servicecatalog:AssociatePrincipalWithPortfolio"
-                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
-              - Effect: Allow
-                Action:
-                  - "dynamodb:DescribeTable"
-                  - "dynamodb:UpdateItem"
-                Resource: !GetAtt AccountTable.Arn
-              - Effect: Allow
-                Action:
-                  - "sqs:DeleteMessage"
-                  - "sqs:GetQueueAttributes"
-                  - "sqs:ReceiveMessage"
-                Resource: !GetAtt AccountQueue.Arn
 
   QueueProcessorRolePolicy:
     Type: "AWS::IAM::Policy"
@@ -265,26 +172,9 @@ Resources:
         Statement:
           - Effect: Allow
             Action: "iam:GetRole"
-            Resource: !GetAtt QueueProcessorRole.Arn
+            Resource: !GetAtt QueueProcessorFunctionRole.Arn
       Roles:
-        - !Ref QueueProcessorRole
-
-  QueueProcessorPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${QueueProcessorLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${QueueProcessorLogGroup}:log-stream:*"
-      Roles:
-        - !Ref QueueProcessorRole
+        - !Ref QueueProcessorFunctionRole
 
   QueueProcessorFunction:
     Type: "AWS::Serverless::Function"
@@ -292,7 +182,7 @@ Resources:
       Description: Queue Processor Lambda handler
       Environment:
         Variables:
-          POWERTOOLS_SERVICE_NAME: queue_processor
+          POWERTOOLS_SERVICE_NAME: sqs_processor
           LAMBDA_ROLE_ARN: !GetAtt QueueProcessorRole.Arn
           ACCOUNT_TABLE: !Ref AccountTable
       Events:
@@ -302,57 +192,30 @@ Resources:
             BatchSize: 1
             Enabled: true
             Queue: !GetAtt AccountQueue.Arn
-      Handler: queue_processor.lambda_handler
+      Handler: sqs_processor.lambda_handler
       Layers:
         - !Ref DependencyLayer
-      Role: !GetAtt QueueProcessorRole.Arn
-
-  AccountStatusLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AccountStatusFunction}"
-      RetentionInDays: 7
-
-  AccountStatusRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
       Policies:
-        - PolicyName: AccountStatusPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "dynamodb:DescribeTable"
-                  - "dynamodb:GetItem"
-                Resource: !GetAtt AccountTable.Arn
-
-  AccountStatusPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${AccountStatusLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${AccountStatusLogGroup}:log-stream:*"
-      Roles:
-        - !Ref AccountStatusRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "servicecatalog:ListPortfolios"
+                - "servicecatalog:SearchProducts"
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - "servicecatalog:DescribeProduct"
+                - "servicecatalog:ProvisionProduct"
+              Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:product/*"
+            - Effect: Allow
+              Action: "servicecatalog:AssociatePrincipalWithPortfolio"
+              Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
+            - Effect: Allow
+              Action:
+                - "dynamodb:DescribeTable"
+                - "dynamodb:UpdateItem"
+              Resource: !GetAtt AccountTable.Arn
 
   AccountStatusFunction:
     Type: "AWS::Serverless::Function"
@@ -360,7 +223,7 @@ Resources:
       Description: Account Status Lambda handler
       Environment:
         Variables:
-          POWERTOOLS_SERVICE_NAME: account_status
+          POWERTOOLS_SERVICE_NAME: apigw_account_status
           SECRET_ID: !Ref ApiKeySecret
       Events:
         HttpApiEvent:
@@ -368,58 +231,17 @@ Resources:
           Properties:
             Path: "/v1/accounts/{accountName}"
             Method: GET
-      Handler: account_status.lambda_handler
+      Handler: apigw_account_status.lambda_handler
       Layers:
         - !Ref DependencyLayer
-      Role: !GetAtt AccountStatusRole.Arn
-
-  InvokeCallbackLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${InvokeCallbackFunction}"
-      RetentionInDays: 7
-
-  InvokeCallbackRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
       Policies:
-        - PolicyName: InvokeCallbackPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "dynamodb:DescribeTable"
-                  - "dynamodb:GetItem"
-                  - "dynamodb:UpdateItem"
-                Resource: !GetAtt AccountTable.Arn
-
-  InvokeCallbackPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${InvokeCallbackLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${InvokeCallbackLogGroup}:log-stream:*"
-      Roles:
-        - !Ref InvokeCallbackRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:DescribeTable"
+                - "dynamodb:GetItem"
+              Resource: !GetAtt AccountTable.Arn
 
   InvokeCallbackFunction:
     Type: "AWS::Serverless::Function"
@@ -427,7 +249,7 @@ Resources:
       Description: Invoke Callback Lambda handler
       Environment:
         Variables:
-          POWERTOOLS_SERVICE_NAME: invoke_callback
+          POWERTOOLS_SERVICE_NAME: eb_invoke_callback
           ACCOUNT_TABLE: !Ref AccountTable
       Events:
         EventBridgeEvent:
@@ -444,59 +266,16 @@ Resources:
                   - CreateManagedAccount
       Layers:
         - !Ref DependencyLayer
-      Handler: invoke_callback.lambda_handler
-      Role: !GetAtt InvokeCallbackRole.Arn
-
-  OrganizationSetupLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${OrganizationSetupFunction}"
-      RetentionInDays: 7
-
-  OrganizationSetupRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSOrganizationsFullAccess"
+      Handler: eb_invoke_callback.lambda_handler
       Policies:
-        - PolicyName: OrganizationSetupPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "ec2:DescribeRegions"
-                  - "guardduty:EnableOrganizationAdminAccount"
-                  - "macie2:EnableOrganizationAdminAccount"
-                  - "ram:EnableSharingWithAwsOrganization"
-                  - "servicecatalog:EnableAWSOrganizationsAccess"
-                Resource: "*"
-
-  OrganizationSetupPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${OrganizationSetupLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${OrganizationSetupLogGroup}:log-stream:*"
-      Roles:
-        - !Ref OrganizationSetupRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:DescribeTable"
+                - "dynamodb:GetItem"
+                - "dynamodb:UpdateItem"
+              Resource: !GetAtt AccountTable.Arn
 
   OrganizationSetupFunction:
     Type: "AWS::Serverless::Function"
@@ -504,7 +283,7 @@ Resources:
       Description: Organization Setup Lambda handler
       Environment:
         Variables:
-          POWERTOOLS_SERVICE_NAME: organization_setup
+          POWERTOOLS_SERVICE_NAME: eb_organization_setup
       Events:
         EventBridgeEvent:
           Type: EventBridgeRule
@@ -524,52 +303,26 @@ Resources:
                       - SUCCEEDED
       Layers:
         - !Ref DependencyLayer
+      Handler: eb_organization_setup.lambda_handler
+      Policies:
+        - AWSOrganizationsFullAccess
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeRegions"
+                - "guardduty:EnableOrganizationAdminAccount"
+                - "macie2:EnableOrganizationAdminAccount"
+                - "ram:EnableSharingWithAwsOrganization"
+                - "servicecatalog:EnableAWSOrganizationsAccess"
+              Resource: "*"
       Timeout: 30 # seconds
-      Handler: organization_setup.lambda_handler
-      Role: !GetAtt OrganizationSetupRole.Arn
 
   OrganizationSetup:
     Type: "Custom::OrganizationSetup"
     Properties:
       ServiceToken: !GetAtt OrganizationSetupFunction.Arn
       Regions: !Join [",", !Ref Regions]
-
-  S3PublicBlockLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${S3PublicBlockFunction}"
-      RetentionInDays: 7
-
-  S3PublicBlockRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-
-  S3PublicBlockPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${S3PublicBlockLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${S3PublicBlockLogGroup}:log-stream:*"
-      Roles:
-        - !Ref S3PublicBlockRole
 
   S3PublicBlockFunction:
     Type: "AWS::Serverless::Function"
@@ -582,52 +335,6 @@ Resources:
       Layers:
         - !Ref DependencyLayer
       Handler: lambda_handler.handler
-      Role: !GetAtt S3PublicBlockRole.Arn
-
-  DeleteDefaultVpcLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${DeleteDefaultVpcFunction}"
-      RetentionInDays: 7
-
-  DeleteDefaultVpcRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-      Policies:
-        - PolicyName: DeleteDefaultVpcPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: "ec2:DescribeRegions"
-                Resource: "*"
-
-  DeleteDefaultVpcPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${DeleteDefaultVpcLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${DeleteDefaultVpcLogGroup}:log-stream:*"
-      Roles:
-        - !Ref DeleteDefaultVpcRole
 
   DeleteDefaultVpcFunction:
     Type: "AWS::Serverless::Function"
@@ -641,45 +348,13 @@ Resources:
         - !Ref DependencyLayer
       Handler: lambda_handler.handler
       MemorySize: 1024 # megabytes
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: "ec2:DescribeRegions"
+              Resource: "*"
       Timeout: 300 # 5 minutes
-      Role: !GetAtt DeleteDefaultVpcRole.Arn
-
-  Route53QueryLogsLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${Route53QueryLogsFunction}"
-      RetentionInDays: 7
-
-  Route53QueryLogsRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-
-  Route53QueryLogsPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Route53QueryLogsLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Route53QueryLogsLogGroup}:log-stream:*"
-      Roles:
-        - !Ref Route53QueryLogsRole
 
   Route53QueryLogsFunction:
     Type: "AWS::Serverless::Function"
@@ -692,55 +367,6 @@ Resources:
       Layers:
         - !Ref DependencyLayer
       Handler: lambda_handler.handler
-      Role: !GetAtt Route53QueryLogsRole.Arn
-
-  EnableSecurityHubLogGroup:
-    Type: "AWS::Logs::LogGroup"
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${EnableSecurityHubFunction}"
-      RetentionInDays: 7
-
-  EnableSecurityHubRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
-      Policies:
-        - PolicyName: EnableSecurityHubPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "ec2:DescribeRegions"
-                  - "organizations:DescribeAccount"
-                  - "organizations:ListAccounts"
-                Resource: "*"
-
-  EnableSecurityHubPolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CloudWatchLogs
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action:
-              - "logs:CreateLogStream"
-              - "logs:PutLogEvents"
-            Resource:
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EnableSecurityHubLogGroup}"
-              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EnableSecurityHubLogGroup}:log-stream:*"
-      Roles:
-        - !Ref EnableSecurityHubRole
 
   EnableSecurityHubFunction:
     Type: "AWS::Serverless::Function"
@@ -755,8 +381,16 @@ Resources:
         - !Ref DependencyLayer
       Handler: lambda_handler.handler
       MemorySize: 1024 # megabytes
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "ec2:DescribeRegions"
+                - "organizations:DescribeAccount"
+                - "organizations:ListAccounts"
+              Resource: "*"
       Timeout: 300 # 5 minutes
-      Role: !GetAtt EnableSecurityHubRole.Arn
 
   ControlTowerAssumePolicy:
     Type: "AWS::IAM::Policy"
@@ -769,11 +403,11 @@ Resources:
             Action: "sts:AssumeRole"
             Resource: !Sub "arn:${AWS::Partition}:iam::*:role/AWSControlTowerExecution"
       Roles:
-        - !Ref S3PublicBlockRole
-        - !Ref DeleteDefaultVpcRole
-        - !Ref Route53QueryLogsRole
-        - !Ref EnableSecurityHubRole
-        - !Ref OrganizationSetupRole
+        - !Ref S3PublicBlockFunctionRole
+        - !Ref DeleteDefaultVpcFunctionRole
+        - !Ref Route53QueryLogsFunctionRole
+        - !Ref EnableSecurityHubFunctionRole
+        - !Ref OrganizationSetupFunctionRole
 
   DependencyLayer:
     Type: "AWS::Serverless::LayerVersion"
