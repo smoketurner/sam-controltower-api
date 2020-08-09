@@ -2,8 +2,9 @@
 
 setup:
 	python3 -m venv .venv
-	.venv/bin/pip3 install -r requirements.txt
-	.venv/bin/pip3 install -r dependencies/requirements.txt
+	.venv/bin/python3 -m pip install -U pip
+	.venv/bin/python3 -m pip install -r requirements.txt
+	.venv/bin/python3 -m pip install -r dependencies/requirements.txt
 
 build:
 	sam build -u

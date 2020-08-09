@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "AccountName": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9]{3,50}$",
+      "minLength": 3,
+      "maxLength": 50
+    },
+    "AccountEmail": {
+      "type": "string",
+      "format": "email"
+    },
+    "ManagedOrganizationalUnit": {
+      "type": "string"
+    },
+    "SSOUserEmail": {
+      "type": "string",
+      "format": "email"
+    },
+    "SSOUserFirstName": {
+      "type": "string"
+    },
+    "SSOUserLastName": {
+      "type": "string"
+    },
+    "CallbackUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "CallbackSecret": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "AccountName",
+    "AccountEmail",
+    "ManagedOrganizationalUnit",
+    "SSOUserEmail",
+    "SSOUserFirstName",
+    "SSOUserLastName"
+  ]
+}

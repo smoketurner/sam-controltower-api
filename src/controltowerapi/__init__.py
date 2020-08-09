@@ -8,4 +8,3 @@ from .ram import RAM
 from .servicecatalog import ServiceCatalog
 
 __all__ = ["GuardDuty", "Macie", "Organizations", "RAM", "ServiceCatalog"]
-

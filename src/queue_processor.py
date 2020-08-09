@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import datetime, timezone
 import json
 import os
 import warnings
@@ -23,31 +24,21 @@ CT_PORTFOLIO_ID = servicecatalog.get_ct_portfolio_id()
 servicecatalog.associate_principal(CT_PORTFOLIO_ID, os.environ["LAMBDA_ROLE_ARN"])
 CT_PRODUCT = servicecatalog.get_ct_product()
 
+ACTIVE_STATUSES = ["CREATED", "IN_PROGRESS", "IN_PROGRESS_IN_ERROR"]
+FINISH_STATUSES = ["FAILED", "SUCCEEDED"]
+
 
 @tracer.capture_method
 def check_active():
     """
     Check if there are any accounts being created
     """
-    created_count = AccountModel.status_index.count("CREATED", limit=1)
-    if created_count > 0:
-        raise Exception(
-            f"Found {created_count} accounts in CREATED status, leaving message in queue"
-        )
-
-    in_progress_count = AccountModel.status_index.count("IN_PROGRESS", limit=1)
-    if in_progress_count > 0:
-        raise Exception(
-            f"Found {in_progress_count} accounts in IN_PROGRESS status, leaving message in queue"
-        )
-
-    in_progress_in_error_count = AccountModel.status_index.count(
-        "IN_PROGRESS_IN_ERROR", limit=1
-    )
-    if in_progress_in_error_count > 0:
-        raise Exception(
-            f"Found {in_progress_in_error_count} accounts in IN_PROGRESS_IN_ERROR status, leaving message in queue"
-        )
+    for status in ACTIVE_STATUSES:
+        count = AccountModel.status_index.count(status, limit=1)
+        if count > 0:
+            raise Exception(
+                f"Found {count} accounts in {status} status, leaving message in queue"
+            )
 
 
 @tracer.capture_method
@@ -99,7 +90,10 @@ def update_status(account: AccountModel) -> str:
     if status != account.status:
         try:
             account.update(
-                actions=[AccountModel.status.set(status)],
+                actions=[
+                    AccountModel.status.set(status),
+                    AccountModel.updated_at.set(datetime.now(timezone.utc)),
+                ],
                 condition=(AccountModel.status == account.status),
             )
         except pynamodb.exceptions.UpdateError as error:
@@ -143,7 +137,7 @@ def process_record(record):
             )
             return
 
-        elif status in ["FAILED", "SUCCEEDED"]:
+        elif status in FINISH_STATUSES:
             logger.info(
                 f"Account '{account.account_name}' reached {status}, deleting message"
             )
@@ -168,6 +162,7 @@ def process_record(record):
                     actions=[
                         AccountModel.status.set("FAILED"),
                         AccountModel.status_message.set(error.message),
+                        AccountModel.updated_at.set(datetime.now(timezone.utc)),
                     ],
                     condition=(AccountModel.status == "QUEUED"),
                 )

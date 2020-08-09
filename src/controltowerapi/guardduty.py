@@ -63,4 +63,3 @@ class GuardDuty:
                 AutoEnable=True,
                 DataSources={"S3Logs": {"AutoEnable": True}},
             )
-

@@ -22,10 +22,10 @@ Globals:
         LOG_LEVEL: INFO
 
 Resources:
-  CreateAccountSecret:
+  ApiKeySecret:
     Type: "AWS::SecretsManager::Secret"
     Properties:
-      Description: "Create Account API Key"
+      Description: "Control Tower API Key Secret"
       GenerateSecretString:
         SecretStringTemplate: "{}"
         GenerateStringKey: token
@@ -137,7 +137,7 @@ Resources:
         Variables:
           POWERTOOLS_SERVICE_NAME: create_account
           ACCOUNT_QUEUE_URL: !Ref AccountQueue
-          SECRET_ID: !Ref CreateAccountSecret
+          SECRET_ID: !Ref ApiKeySecret
       Events:
         HttpApiEvent:
           Type: HttpApi
@@ -295,7 +295,6 @@ Resources:
           POWERTOOLS_SERVICE_NAME: queue_processor
           LAMBDA_ROLE_ARN: !GetAtt QueueProcessorRole.Arn
           ACCOUNT_TABLE: !Ref AccountTable
-          ACCOUNT_QUEUE_URL: !Ref AccountQueue
       Events:
         SQSEvent:
           Type: SQS
@@ -333,11 +332,10 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: "servicecatalog:DescribeRecord"
-                Resource: "*"
-                Condition:
-                  StringEquals:
-                    "servicecatalog:accountLevel": "self"
+                Action:
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:GetItem"
+                Resource: !GetAtt AccountTable.Arn
 
   AccountStatusPolicy:
     Type: "AWS::IAM::Policy"
@@ -363,12 +361,12 @@ Resources:
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: account_status
-          SECRET_ID: !Ref CreateAccountSecret
+          SECRET_ID: !Ref ApiKeySecret
       Events:
         HttpApiEvent:
           Type: HttpApi
           Properties:
-            Path: "/v1/accounts/{recordId}"
+            Path: "/v1/accounts/{accountName}"
             Method: GET
       Handler: account_status.lambda_handler
       Layers:
@@ -507,6 +505,23 @@ Resources:
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: organization_setup
+      Events:
+        EventBridgeEvent:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: "$.detail.serviceEventDetails.setupLandingZoneStatus"
+            Pattern:
+              source:
+                - "aws.controltower"
+              "detail-type":
+                - "AWS Service Event via CloudTrail"
+              detail:
+                eventName:
+                  - SetupLandingZone
+                serviceEventDetails:
+                  setupLandingZoneStatus:
+                    state:
+                      - SUCCEEDED
       Layers:
         - !Ref DependencyLayer
       Timeout: 30 # seconds

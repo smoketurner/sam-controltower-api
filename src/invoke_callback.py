@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import datetime, timezone
 import hmac
 import json
 import os
@@ -49,7 +50,10 @@ def lambda_handler(event, context):
 
     state = event.get("state")
     if state:
-        actions.append(AccountModel.state.set(state))
+        actions.append(AccountModel.status.set(state))
+
+    if actions:
+        actions.append(AccountModel.updated_at.set(datetime.now(timezone.utc)))
 
     account.update(actions=actions)
     account.refresh()
@@ -62,7 +66,7 @@ def lambda_handler(event, context):
             "account_id": account.account_id,
             "ou_name": account.ou_name,
             "ou_id": account.ou_id,
-            "state": account.state,
+            "status": account.status,
             "created_at": str(account.created_at),
         }
 

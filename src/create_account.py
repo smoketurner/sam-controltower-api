@@ -12,7 +12,6 @@ import botocore
 import fastjsonschema
 import pynamodb
 
-from controltowerapi.servicecatalog import ServiceCatalog
 from controltowerapi.models import AccountModel
 from .responses import build_response, error_response, authenticate_request
 
@@ -23,35 +22,9 @@ ACCOUNT_QUEUE_URL = os.environ["ACCOUNT_QUEUE_URL"]
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-servicecatalog = ServiceCatalog()
 
-SCHEMA = {
-    "type": "object",
-    "properties": {
-        "AccountName": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9]{3,50}$",
-            "minLength": 3,
-            "maxLength": 50,
-        },
-        "AccountEmail": {"type": "string", "format": "email"},
-        "ManagedOrganizationalUnit": {"type": "string"},
-        "SSOUserEmail": {"type": "string", "format": "email"},
-        "SSOUserFirstName": {"type": "string"},
-        "SSOUserLastName": {"type": "string"},
-        "CallbackUrl": {"type": "string", "format": "uri"},
-        "CallbackSecret": {"type": "string"},
-    },
-    "required": [
-        "AccountName",
-        "AccountEmail",
-        "ManagedOrganizationalUnit",
-        "SSOUserEmail",
-        "SSOUserFirstName",
-        "SSOUserLastName",
-    ],
-}
-VALIDATE = fastjsonschema.compile(SCHEMA)
+with open("./schemas/create_account.json", "r") as fp:
+    VALIDATE = fastjsonschema.compile(fp.read())
 
 sqs = boto3.client("sqs")
 
@@ -109,6 +82,7 @@ def lambda_handler(event, context):
                 return error_response(
                     409, f'Account name "{account_name}" already exists'
                 )
+        return error_response(500, "Unable to store account")
 
     message = json.dumps(body, indent=None, separators=(",", ":"), sort_keys=True)
 

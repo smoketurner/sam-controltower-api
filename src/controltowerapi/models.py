@@ -42,5 +42,7 @@ class AccountModel(Model):
 
     callback_url = UnicodeAttribute()
     callback_secret = UnicodeAttribute()
+
     queued_at = UTCDateTimeAttribute()
     created_at = UTCDateTimeAttribute()
+    updated_at = UTCDateTimeAttribute()

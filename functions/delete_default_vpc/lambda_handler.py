@@ -133,4 +133,3 @@ def handler(event, context):
     with ThreadPoolExecutor(max_workers=10) as executor:
         for _ in executor.map(lambda f: schedule_delete_default_vpc(*f), args):
             pass
-
