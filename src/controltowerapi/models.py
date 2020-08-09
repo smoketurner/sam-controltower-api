@@ -5,7 +5,7 @@ import os
 
 from pynamodb.models import Model
 from pynamodb.attributes import UnicodeAttribute, UTCDateTimeAttribute
-from pynamodb.indexes import GlobalSecondaryIndex, AllProjection
+from pynamodb.indexes import GlobalSecondaryIndex, KeysOnlyProjection
 
 ACCOUNT_TABLE = os.environ["ACCOUNT_TABLE"]
 
@@ -15,7 +15,7 @@ class StatusIndex(GlobalSecondaryIndex):
         index_name = "AccountStatus"
         read_capacity_units = 0
         write_capacity_units = 0
-        projection = AllProjection()
+        projection = KeysOnlyProjection()
 
     status = UnicodeAttribute(hash_key=True)
     account_name = UnicodeAttribute(range_key=True)

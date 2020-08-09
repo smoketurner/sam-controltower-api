@@ -57,6 +57,14 @@ class GuardDuty:
         for page in page_iterator:
             detector_ids.extend(page.get("DetectorIds", []))
 
+        if not detector_ids:
+            response = client.create_detector(
+                Enable=True,
+                DataSources={"S3Logs": {"Enable": True}},
+                FindingPublishingFrequency="SIX_HOURS",
+            )
+            detector_ids.append(response["DetectorId"])
+
         for detector_id in detector_ids:
             client.update_organization_configuration(
                 DetectorId=detector_id,

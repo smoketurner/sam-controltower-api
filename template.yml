@@ -81,7 +81,7 @@ Resources:
       Roles:
         - !Ref QueueProcessorFunctionRole
 
-  CreateAccountFunction:
+  AccountCreateFunction:
     Type: "AWS::Serverless::Function"
     Properties:
       Description: Create Account Lambda handler
@@ -101,7 +101,7 @@ Resources:
         - !Ref DependencyLayer
       Policies:
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref CreateAccountSecret
+            SecretArn: !Ref ApiKeySecret
         - SQSSendMessagePolicy:
             QueueName: !GetAtt AccountQueue.Arn
 
@@ -115,12 +115,14 @@ Resources:
           AttributeType: S
       BillingMode: PAY_PER_REQUEST
       GlobalSecondaryIndexes:
-        - IndexName: AccountState
+        - IndexName: AccountStatus
           KeySchema:
             - AttributeName: status
               KeyType: HASH
             - AttributeName: account_name
               KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
       KeySchema:
         - AttributeName: account_name
           KeyType: HASH
@@ -133,14 +135,14 @@ Resources:
     Type: "AWS::SQS::Queue"
     Properties:
       ContentBasedDeduplication: true
-      DelaySeconds: 10
+      DelaySeconds: 0
       FifoQueue: true
       KmsDataKeyReusePeriodSeconds: 300 # 5 minutes (default)
       KmsMasterKeyId: alias/aws/sqs
       MaximumMessageSize: 262144 # 256 KiB (default)
       MessageRetentionPeriod: 1209600 # 14 days
       ReceiveMessageWaitTimeSeconds: 20 # long-polling
-      VisibilityTimeout: 10 # seconds
+      VisibilityTimeout: 60 # 1 minute
 
   AccountQueuePolicy:
     Type: "AWS::SQS::QueuePolicy"
@@ -149,7 +151,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !GetAtt CreateAccountFunctionRole.Arn
+              AWS: !GetAtt AccountCreateFunctionRole.Arn
             Action: "sqs:SendMessage"
             Resource: !GetAtt AccountQueue.Arn
           - Effect: Allow
@@ -183,7 +185,7 @@ Resources:
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: sqs_processor
-          LAMBDA_ROLE_ARN: !GetAtt QueueProcessorRole.Arn
+          LAMBDA_ROLE_ARN: !GetAtt QueueProcessorFunctionRole.Arn
           ACCOUNT_TABLE: !Ref AccountTable
       Events:
         SQSEvent:
@@ -204,6 +206,12 @@ Resources:
                 - "servicecatalog:SearchProducts"
               Resource: "*"
             - Effect: Allow
+              Action: "servicecatalog:DescribeRecord"
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  "servicecatalog:accountLevel": "self"
+            - Effect: Allow
               Action:
                 - "servicecatalog:DescribeProduct"
                 - "servicecatalog:ProvisionProduct"
@@ -214,8 +222,12 @@ Resources:
             - Effect: Allow
               Action:
                 - "dynamodb:DescribeTable"
+                - "dynamodb:GetItem"
                 - "dynamodb:UpdateItem"
-              Resource: !GetAtt AccountTable.Arn
+              Resource:
+                - !GetAtt AccountTable.Arn
+                - !Sub "${AccountTable.Arn}/index/*"
+      Timeout: 10 # seconds
 
   AccountStatusFunction:
     Type: "AWS::Serverless::Function"
@@ -241,6 +253,33 @@ Resources:
               Action:
                 - "dynamodb:DescribeTable"
                 - "dynamodb:GetItem"
+              Resource: !GetAtt AccountTable.Arn
+
+  AccountDeleteFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: Account Delete Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: apigw_account_delete
+          SECRET_ID: !Ref ApiKeySecret
+      Events:
+        HttpApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: "/v1/accounts/{accountName}"
+            Method: DELETE
+      Handler: apigw_account_delete.lambda_handler
+      Layers:
+        - !Ref DependencyLayer
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:DescribeTable"
+                - "dynamodb:GetItem"
+                - "dynamodb:DeleteItem"
               Resource: !GetAtt AccountTable.Arn
 
   InvokeCallbackFunction:
