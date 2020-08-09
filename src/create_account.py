@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import datetime, timezone
 import json
 import os
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+import boto3
+import botocore
 import fastjsonschema
+import pynamodb
 
 from controltowerapi.servicecatalog import ServiceCatalog
 from controltowerapi.models import AccountModel
@@ -14,14 +18,12 @@ from .responses import build_response, error_response, authenticate_request
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
+ACCOUNT_QUEUE_URL = os.environ["ACCOUNT_QUEUE_URL"]
+
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
 servicecatalog = ServiceCatalog()
-
-CT_PORTFOLIO_ID = servicecatalog.get_ct_portfolio_id()
-servicecatalog.associate_principal(CT_PORTFOLIO_ID, os.environ["LAMBDA_ROLE_ARN"])
-CT_PRODUCT = servicecatalog.get_ct_product()
 
 SCHEMA = {
     "type": "object",
@@ -51,6 +53,8 @@ SCHEMA = {
 }
 VALIDATE = fastjsonschema.compile(SCHEMA)
 
+sqs = boto3.client("sqs")
+
 
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
@@ -66,42 +70,26 @@ def lambda_handler(event, context):
     try:
         body = json.loads(event["body"])
     except ValueError:
+        logger.exception("Unable to parse JSON body: " + event["body"])
         return error_response(400, "Unable to parse JSON body")
 
     try:
         VALIDATE(body)
     except fastjsonschema.JsonSchemaException as error:
+        logger.exception(f"Invalid request body: {error.message}")
         return error_response(400, error.message)
 
     account_name = body["AccountName"]
 
-    parameters = {
-        "AccountName": account_name,
-        "AccountEmail": body["AccountEmail"],
-        "ManagedOrganizationalUnit": body["ManagedOrganizationalUnit"],
-        "SSOUserEmail": body["SSOUserEmail"],
-        "SSOUserFirstName": body["SSOUserFirstName"],
-        "SSOUserLastName": body["SSOUserLastName"],
-    }
-
-    try:
-        AccountModel.get(account_name)
-        return error_response(400, f'Account name "{account_name}" already exists')
-    except AccountModel.DoesNotExist:
-        pass
-
-    try:
-        product = servicecatalog.provision_product(CT_PRODUCT, parameters)
-    except Exception as error:
-        logger.error(f"Unable to provision product: {str(error)}")
-        return error_response(500, "Unable to provision product")
-
     item = {
         "account_name": account_name,
-        "record_id": product["RecordId"],
-        "state": product["Status"],
+        "account_email": body["AccountEmail"],
+        "status": "QUEUED",
         "ou_name": body["ManagedOrganizationalUnit"],
-        "created_at": product["CreatedTime"],
+        "sso_user_email": body["SSOUserEmail"],
+        "sso_user_first_name": body["SSOUserFirstName"],
+        "sso_user_last_name": body["SSOUserLastName"],
+        "queued_at": datetime.now(timezone.utc),
     }
     if "CallbackUrl" in body:
         item["callback_url"] = body["CallbackUrl"]
@@ -109,6 +97,31 @@ def lambda_handler(event, context):
         item["callback_secret"] = body["CallbackSecret"]
 
     account = AccountModel(**item)
-    account.save(AccountModel.account_name.does_not_exist())
 
-    return build_response(200, item)
+    try:
+        account.save(AccountModel.account_name.does_not_exist())
+    except pynamodb.exceptions.PutError as error:
+        if isinstance(error.cause, botocore.exceptions.ClientError):
+            if (
+                error.cause.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                return error_response(
+                    409, f'Account name "{account_name}" already exists'
+                )
+
+    message = json.dumps(body, indent=None, separators=(",", ":"), sort_keys=True)
+
+    logger.info(f"Sending account '{account_name}' to queue")
+    try:
+        sqs.send_message(
+            QueueUrl=ACCOUNT_QUEUE_URL,
+            MessageBody=message,
+            MessageDeduplicationId=account_name,
+            MessageGroupId="Accounts",
+        )
+        logger.debug(f"Sent account '{account_name}' to queue")
+    except botocore.exceptions.ClientError as error:
+        logger.exception("Unable to send message to queue")
+
+    return build_response(202, item)

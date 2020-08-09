@@ -31,6 +31,7 @@ Resources:
         GenerateStringKey: token
         PasswordLength: 32
         ExcludeCharacters: '"@/\'
+        ExcludePunctuation: true
 
   CreateAccountLogGroup:
     Type: "AWS::Logs::LogGroup"
@@ -57,26 +58,11 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action:
-                  - "servicecatalog:ListPortfolios"
-                  - "servicecatalog:SearchProducts"
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - "servicecatalog:DescribeProduct"
-                  - "servicecatalog:ProvisionProduct"
-                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:product/*"
-              - Effect: Allow
-                Action: "servicecatalog:AssociatePrincipalWithPortfolio"
-                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
-              - Effect: Allow
-                Action:
-                  - "dynamodb:DescribeTable"
-                  - "dynamodb:PutItem"
-                Resource: !GetAtt AccountTable.Arn
-              - Effect: Allow
                 Action: "secretsmanager:GetSecretValue"
                 Resource: !Ref CreateAccountSecret
+              - Effect: Allow
+                Action: "sqs:SendMessage"
+                Resource: !GetAtt AccountQueue.Arn
 
   CreateAccountLogPolicy:
     Type: "AWS::IAM::Policy"
@@ -92,19 +78,6 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CreateAccountLogGroup}"
               - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CreateAccountLogGroup}:log-stream:*"
-      Roles:
-        - !Ref CreateAccountRole
-
-  CreateAccountRolePolicy:
-    Type: "AWS::IAM::Policy"
-    Properties:
-      PolicyName: CreateAccountRolePolicy
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action: "iam:GetRole"
-            Resource: !GetAtt CreateAccountRole.Arn
       Roles:
         - !Ref CreateAccountRole
 
@@ -154,7 +127,7 @@ Resources:
               - "sso:DescribeRegisteredRegions"
             Resource: "*"
       Roles:
-        - !Ref CreateAccountRole
+        - !Ref QueueProcessorRole
 
   CreateAccountFunction:
     Type: "AWS::Serverless::Function"
@@ -163,8 +136,7 @@ Resources:
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: create_account
-          LAMBDA_ROLE_ARN: !GetAtt CreateAccountRole.Arn
-          ACCOUNT_TABLE: !Ref AccountTable
+          ACCOUNT_QUEUE_URL: !Ref AccountQueue
           SECRET_ID: !Ref CreateAccountSecret
       Events:
         HttpApiEvent:
@@ -183,7 +155,16 @@ Resources:
       AttributeDefinitions:
         - AttributeName: account_name
           AttributeType: S
+        - AttributeName: status
+          AttributeType: S
       BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: AccountState
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: account_name
+              KeyType: RANGE
       KeySchema:
         - AttributeName: account_name
           KeyType: HASH
@@ -191,6 +172,141 @@ Resources:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
         SSEEnabled: true
+
+  AccountQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: true
+      DelaySeconds: 10
+      FifoQueue: true
+      KmsDataKeyReusePeriodSeconds: 300 # 5 minutes (default)
+      KmsMasterKeyId: alias/aws/sqs
+      MaximumMessageSize: 262144 # 256 KiB (default)
+      MessageRetentionPeriod: 1209600 # 14 days
+      ReceiveMessageWaitTimeSeconds: 20 # long-polling
+      VisibilityTimeout: 10 # seconds
+
+  AccountQueuePolicy:
+    Type: "AWS::SQS::QueuePolicy"
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt CreateAccountRole.Arn
+            Action: "sqs:SendMessage"
+            Resource: !GetAtt AccountQueue.Arn
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt QueueProcessorRole.Arn
+            Action:
+              - "sqs:DeleteMessage"
+              - "sqs:GetQueueAttributes"
+              - "sqs:ReceiveMessage"
+            Resource: !GetAtt AccountQueue.Arn
+      Queues:
+        - !Ref AccountQueue
+
+  QueueProcessorLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${QueueProcessorFunction}"
+      RetentionInDays: 7
+
+  QueueProcessorRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Description: !Sub "DO NOT DELETE - Used by Lambda. Created by CloudFormation ${AWS::StackId}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      Policies:
+        - PolicyName: QueueProcessorPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "servicecatalog:ListPortfolios"
+                  - "servicecatalog:SearchProducts"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "servicecatalog:DescribeProduct"
+                  - "servicecatalog:ProvisionProduct"
+                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:product/*"
+              - Effect: Allow
+                Action: "servicecatalog:AssociatePrincipalWithPortfolio"
+                Resource: !Sub "arn:${AWS::Partition}:catalog:${AWS::Region}:${AWS::AccountId}:portfolio/*"
+              - Effect: Allow
+                Action:
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:UpdateItem"
+                Resource: !GetAtt AccountTable.Arn
+              - Effect: Allow
+                Action:
+                  - "sqs:DeleteMessage"
+                  - "sqs:GetQueueAttributes"
+                  - "sqs:ReceiveMessage"
+                Resource: !GetAtt AccountQueue.Arn
+
+  QueueProcessorRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: QueueProcessorRolePolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "iam:GetRole"
+            Resource: !GetAtt QueueProcessorRole.Arn
+      Roles:
+        - !Ref QueueProcessorRole
+
+  QueueProcessorPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CloudWatchLogs
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${QueueProcessorLogGroup}"
+              - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${QueueProcessorLogGroup}:log-stream:*"
+      Roles:
+        - !Ref QueueProcessorRole
+
+  QueueProcessorFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Description: Queue Processor Lambda handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: queue_processor
+          LAMBDA_ROLE_ARN: !GetAtt QueueProcessorRole.Arn
+          ACCOUNT_TABLE: !Ref AccountTable
+          ACCOUNT_QUEUE_URL: !Ref AccountQueue
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Enabled: true
+            Queue: !GetAtt AccountQueue.Arn
+      Handler: queue_processor.lambda_handler
+      Layers:
+        - !Ref DependencyLayer
+      Role: !GetAtt QueueProcessorRole.Arn
 
   AccountStatusLogGroup:
     Type: "AWS::Logs::LogGroup"
