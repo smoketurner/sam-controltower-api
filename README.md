@@ -44,6 +44,7 @@ make deploy
 
 ## References
 
+- https://www.linkedin.com/pulse/why-terraform-justin-plock/
 - https://aws.amazon.com/solutions/implementations/customizations-for-aws-control-tower/
 - https://github.com/awslabs/aws-deployment-framework
 - https://aws.amazon.com/blogs/mt/how-to-automate-the-creation-of-multiple-accounts-in-aws-control-tower/
