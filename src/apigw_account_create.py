@@ -26,8 +26,6 @@ metrics = Metrics()
 with open("./schemas/create_account.json", "r") as fp:
     VALIDATE = fastjsonschema.compile(fp.read())
 
-sqs = boto3.client("sqs")
-
 
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
@@ -87,6 +85,9 @@ def lambda_handler(event, context):
     message = json.dumps(body, indent=None, separators=(",", ":"), sort_keys=True)
 
     logger.info(f"Sending account '{account_name}' to queue")
+
+    sqs = boto3.client("sqs")
+
     try:
         sqs.send_message(
             QueueUrl=ACCOUNT_QUEUE_URL,

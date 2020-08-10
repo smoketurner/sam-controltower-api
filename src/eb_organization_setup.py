@@ -3,17 +3,17 @@
 
 import warnings
 
-import boto3
 from aws_lambda_powertools import Logger, Metrics, Tracer
+import boto3
 from crhelper import CfnResource
 
 from controltowerapi import (
     AccessAnalyzer,
-    Organizations,
     GuardDuty,
     Macie,
-    ServiceCatalog,
+    Organizations,
     RAM,
+    ServiceCatalog,
 )
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
@@ -22,7 +22,7 @@ tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
 helper = CfnResource(json_logging=True, log_level="INFO", boto_level="INFO")
-organizations = Organizations()
+CT_AUDIT_ACCOUNT_NAME = "Audit"
 
 SERVICE_ACCESS_PRINCIPALS = [
     "backup.amazonaws.com",
@@ -36,27 +36,17 @@ DELEGATED_ADMINISTRATOR_PRINCIPALS = [
     "access-analyzer.amazonaws.com",
     "config-multiaccountsetup.amazonaws.com",
     "guardduty.amazonaws.com",
+    "macie.amazonaws.com",
 ]
 
 
-@tracer.capture_method
-@helper.create
-@helper.update
-def create(event, context):
-    logger.info("Got Create or Update")
-
-    properties = event.get("ResourceProperties", {})
-    regions = properties.get("Regions", "").split(",")
-    if not regions:
-        ec2 = boto3.client("ec2")
-        regions = [
-            region["RegionName"]
-            for region in ec2.describe_regions(
-                Filters=[{"Name": "opt-in-status", "Values": ["opt-in-not-required"]}],
-                AllRegions=False,
-            )["Regions"]
-        ]
-    logger.info(f"Enabling GuardDuty and Security Hub in regions: {regions}")
+def setup_organization(
+    organizations: Organizations, regions: list = [], audit_account_id: str = None
+) -> bool:
+    """
+    Set up the organization in multiple regions
+    """
+    logger.info(f"Enabling GuardDuty, Security Hub and Macie in regions: {regions}")
 
     # enable all organizational policy types
     organizations.enable_all_policy_types()
@@ -73,13 +63,12 @@ def create(event, context):
     # enable RAM sharing to the organization
     RAM().enable_sharing_with_aws_organization()
 
-    audit_account_id = organizations.get_audit_account_id()
     if not audit_account_id:
         logger.error("Unable to find Control Tower Audit account")
-        return context.invoked_function_arn
+        return True
 
     # Create organization IAM access analyzer in the Control Tower Audit account
-    AccessAnalyzer().create_org_analyzer(audit_account_id)
+    AccessAnalyzer.create_org_analyzer(audit_account_id)
 
     for region in regions:
         guardduty = GuardDuty(region)
@@ -103,17 +92,64 @@ def create(event, context):
         audit_account_id, DELEGATED_ADMINISTRATOR_PRINCIPALS
     )
 
-    return context.invoked_function_arn
+    return True
+
+
+def get_all_regions():
+    """
+    Return all regions
+    """
+    ec2 = boto3.client("ec2")
+    regions = [
+        region["RegionName"]
+        for region in ec2.describe_regions(
+            Filters=[{"Name": "opt-in-status", "Values": ["opt-in-not-required"]}],
+            AllRegions=False,
+        )["Regions"]
+    ]
+    return regions
+
+
+@tracer.capture_method
+@helper.create
+@helper.update
+def create(event: dict, context: dict) -> bool:
+    logger.info("Got Create or Update")
+
+    properties = event.get("ResourceProperties", {})
+    regions = properties.get("Regions", "").split(",")
+    if not regions:
+        regions = get_all_regions()
+
+    organizations = Organizations()
+
+    audit_account_id = organizations.get_audit_account_id()
+
+    return setup_organization(organizations, regions, audit_account_id)
 
 
 @tracer.capture_method
 @helper.delete
-def delete(event, context):
+def delete(event: dict, context: dict) -> None:
     logger.info("Got Delete")
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: dict):
+
+    if event.get("eventName") == "SetupLandingZone":
+        regions = [event["awsRegion"]]
+        audit_account_id = None
+        accounts = (
+            event.get("serviceEventDetails", {})
+            .get("setupLandingZoneStatus", {})
+            .get("accounts", [])
+        )
+        for account in accounts:
+            if account["accountName"] == CT_AUDIT_ACCOUNT_NAME:
+                audit_account_id = account["accountId"]
+        return setup_organization(regions, audit_account_id)
+
     helper(event, context)

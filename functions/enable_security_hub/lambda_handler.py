@@ -17,8 +17,6 @@ SECURITY_HUB_REGIONS = os.environ.get("REGIONS", "").split(",")
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-organizations = Organizations()
-sts = STS()
 
 
 @tracer.capture_method
@@ -48,22 +46,23 @@ def handler(event, context):
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:
-        logger.error("Account ID not found in event")
-        return
+        raise Exception("Account ID not found in event")
+
+    organizations = Organizations()
 
     audit_account_id = organizations.get_audit_account_id()
     if not audit_account_id:
-        logger.error("Control Tower Audit account not found")
-        return
+        raise Exception("Control Tower Audit account not found")
 
     regions = get_regions()
     if not regions:
-        logger.error("No regions found to enable Security Hub")
-        return
+        raise Exception("No regions found to enable Security Hub")
 
     # 1. Assume role in new account and enable Security Hub
 
     logger.info(f"Enabling Security Hub in {account_id} in: {regions}")
+
+    sts = STS()
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
     role = sts.assume_role(role_arn, "enable_security_hub")

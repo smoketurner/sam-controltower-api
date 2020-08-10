@@ -5,16 +5,14 @@ import json
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
-import boto3
 
-from sts import STS
+from .sts import STS
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-sts = STS()
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)
@@ -24,8 +22,9 @@ def handler(event, context):
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:
-        logger.error("Account ID not found in event")
-        return
+        raise Exception("Account ID not found in event")
+
+    sts = STS()
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
     role = sts.assume_role(role_arn, "route53_resource_policy")

@@ -11,7 +11,8 @@ __all__ = ["AccessAnalyzer"]
 
 
 class AccessAnalyzer:
-    def create_org_analyzer(self, account_id) -> None:
+    @staticmethod
+    def create_org_analyzer(account_id: str) -> None:
         """
         Create an organization IAM access analyzer in the desired account
         """

@@ -327,7 +327,7 @@ Resources:
         EventBridgeEvent:
           Type: EventBridgeRule
           Properties:
-            InputPath: "$.detail.serviceEventDetails.setupLandingZoneStatus"
+            InputPath: "$.detail"
             Pattern:
               source:
                 - "aws.controltower"
