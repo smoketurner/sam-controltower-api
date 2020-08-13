@@ -107,6 +107,8 @@ Resources:
 
   AccountTable:
     Type: "AWS::DynamoDB::Table"
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
     Properties:
       AttributeDefinitions:
         - AttributeName: account_name
@@ -316,53 +318,6 @@ Resources:
                 - "dynamodb:UpdateItem"
               Resource: !GetAtt AccountTable.Arn
 
-  OrganizationSetupFunction:
-    Type: "AWS::Serverless::Function"
-    Properties:
-      Description: Organization Setup Lambda handler
-      Environment:
-        Variables:
-          POWERTOOLS_SERVICE_NAME: eb_organization_setup
-      Events:
-        EventBridgeEvent:
-          Type: EventBridgeRule
-          Properties:
-            InputPath: "$.detail"
-            Pattern:
-              source:
-                - "aws.controltower"
-              "detail-type":
-                - "AWS Service Event via CloudTrail"
-              detail:
-                eventName:
-                  - SetupLandingZone
-                serviceEventDetails:
-                  setupLandingZoneStatus:
-                    state:
-                      - SUCCEEDED
-      Layers:
-        - !Ref DependencyLayer
-      Handler: eb_organization_setup.lambda_handler
-      Policies:
-        - AWSOrganizationsFullAccess
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - "ec2:DescribeRegions"
-                - "guardduty:EnableOrganizationAdminAccount"
-                - "macie2:EnableOrganizationAdminAccount"
-                - "ram:EnableSharingWithAwsOrganization"
-                - "servicecatalog:EnableAWSOrganizationsAccess"
-              Resource: "*"
-      Timeout: 30 # seconds
-
-  OrganizationSetup:
-    Type: "Custom::OrganizationSetup"
-    Properties:
-      ServiceToken: !GetAtt OrganizationSetupFunction.Arn
-      Regions: !Join [",", !Ref Regions]
-
   S3PublicBlockFunction:
     Type: "AWS::Serverless::Function"
     Properties:
@@ -446,7 +401,6 @@ Resources:
         - !Ref DeleteDefaultVpcFunctionRole
         - !Ref Route53QueryLogsFunctionRole
         - !Ref EnableSecurityHubFunctionRole
-        - !Ref OrganizationSetupFunctionRole
 
   DependencyLayer:
     Type: "AWS::Serverless::LayerVersion"

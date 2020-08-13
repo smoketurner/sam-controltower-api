@@ -9,6 +9,8 @@ from pynamodb.indexes import GlobalSecondaryIndex, KeysOnlyProjection
 
 ACCOUNT_TABLE = os.environ["ACCOUNT_TABLE"]
 
+__all__ = ["AccountModel"]
+
 
 class StatusIndex(GlobalSecondaryIndex):
     class Meta:
