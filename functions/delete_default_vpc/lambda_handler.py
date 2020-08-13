@@ -19,8 +19,6 @@ warnings.filterwarnings("ignore", "No metrics to publish*")
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-sts = boto3.client("sts")
-ec2 = boto3.client("ec2")
 
 
 def vpc_cleanup(vpcid, session, region):
@@ -112,8 +110,9 @@ def handler(event, context):
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:
-        logger.error("Account ID not found in event")
-        return
+        raise Exception("Account ID not found in event")
+
+    ec2 = boto3.client("ec2")
 
     all_regions = [
         region["RegionName"]
@@ -122,6 +121,8 @@ def handler(event, context):
             AllRegions=False,
         )["Regions"]
     ]
+
+    sts = boto3.client("sts")
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
     credentials = sts.assume_role(
@@ -133,4 +134,3 @@ def handler(event, context):
     with ThreadPoolExecutor(max_workers=10) as executor:
         for _ in executor.map(lambda f: schedule_delete_default_vpc(*f), args):
             pass
-

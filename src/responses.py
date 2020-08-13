@@ -1,13 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from datetime import date, datetime
+from datetime import datetime
 import json
+import os
+import secrets
+
+from .controltowerapi.secretsmanager import SecretsManager
+
+
+SECRET_ID = os.environ["SECRET_ID"]
+TOKEN = None
+
+__all__ = ["build_response", "error_response", "authenticate_request"]
 
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, (date, datetime)):
+        if isinstance(obj, datetime):
             return obj.isoformat() + "Z"
         return super().default(obj)
 
@@ -38,3 +48,33 @@ def build_response(code: int, data: dict = None, headers: dict = None) -> dict:
 
 def error_response(code: int, message: str) -> dict:
     return build_response(code, {"code": code, "message": message})
+
+
+def authenticate_request(event) -> bool:
+    """
+    Authenticate the request by validating the Authorization header
+    contains the appropriate access token
+    """
+    authorization = event.get("headers", {}).get("authorization")
+    if not authorization:
+        return error_response(400, "Authorization header not found")
+    elif not authorization.startswith("Bearer "):
+        return error_response(
+            400, "Authorization header does appear to be a bearer token"
+        )
+
+    global TOKEN
+    if not TOKEN:
+        TOKEN = SecretsManager().get_secret_value(SECRET_ID)
+
+    try:
+        access_token = authorization.split(" ")[1]
+    except IndexError:
+        return error_response(
+            400, "Authorization header does appear to be a bearer token"
+        )
+
+    if not secrets.compare_digest(TOKEN, access_token):
+        return error_response(401, "Unauthorized")
+
+    return True

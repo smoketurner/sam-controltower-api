@@ -2,7 +2,6 @@
 .venv
 __pycache__
 *.pyc
-coverage
-scripts/event.json
+.coverage
 packaged.yml
 samconfig.toml

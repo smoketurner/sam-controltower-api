@@ -1,0 +1,8 @@
+{
+  "AccountName": "TestAccount",
+  "AccountEmail": "aws-test3@smoketurner.com",
+  "ManagedOrganizationalUnit": "Custom",
+  "SSOUserEmail": "jplock@smoketurner.com",
+  "SSOUserFirstName": "Justin",
+  "SSOUserLastName": "Plock"
+}

@@ -7,9 +7,9 @@ import warnings
 from aws_lambda_powertools import Logger, Metrics, Tracer
 import boto3
 
-from organizations import Organizations
-from sts import STS
-from securityhub import SecurityHub
+from .organizations import Organizations
+from .sts import STS
+from .securityhub import SecurityHub
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
@@ -17,8 +17,6 @@ SECURITY_HUB_REGIONS = os.environ.get("REGIONS", "").split(",")
 tracer = Tracer()
 logger = Logger()
 metrics = Metrics()
-organizations = Organizations()
-sts = STS()
 
 
 @tracer.capture_method
@@ -29,7 +27,7 @@ def get_regions() -> list:
     if SECURITY_HUB_REGIONS:
         regions = SECURITY_HUB_REGIONS
     else:
-        logger.warn("No regions defined so using all regions")
+        logger.warn("SECURITY_HUB_REGIONS not defined, using all regions")
         ec2 = boto3.client("ec2")
         regions = [
             region["RegionName"]
@@ -48,22 +46,23 @@ def handler(event, context):
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:
-        logger.error("Account ID not found in event")
-        return
+        raise Exception("Account ID not found in event")
+
+    organizations = Organizations()
 
     audit_account_id = organizations.get_audit_account_id()
     if not audit_account_id:
-        logger.error("Control Tower Audit account not found")
-        return
+        raise Exception("Control Tower Audit account not found")
 
     regions = get_regions()
     if not regions:
-        logger.error("No regions found to enable Security Hub")
-        return
+        raise Exception("No regions found to enable Security Hub")
 
     # 1. Assume role in new account and enable Security Hub
 
     logger.info(f"Enabling Security Hub in {account_id} in: {regions}")
+
+    sts = STS()
 
     role_arn = f"arn:aws:iam::{account_id}:role/AWSControlTowerExecution"
     role = sts.assume_role(role_arn, "enable_security_hub")
@@ -91,9 +90,7 @@ def handler(event, context):
 
     # 2. Assume role into Audit account and enable Security Hub, create and invite the new account
 
-    logger.info(
-        f"Enabling Security Hub in {audit_account_id} in: {SECURITY_HUB_REGIONS}"
-    )
+    logger.info(f"Enabling Security Hub in {audit_account_id} in: {regions}")
 
     role_arn = f"arn:aws:iam::{audit_account_id}:role/AWSControlTowerExecution"
     role = sts.assume_role(role_arn, "enable_security_hub")

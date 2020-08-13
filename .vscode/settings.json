@@ -1,5 +1,5 @@
 {
   "editor.formatOnSave": true,
-  "python.pythonPath": ".venv/bin/python3",
+  "python.pythonPath": "/Users/jplock/envs/git/sam-controltower-api/.venv/bin/python3",
   "python.formatting.provider": "black"
 }
