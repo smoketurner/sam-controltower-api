@@ -29,7 +29,7 @@ FINISH_STATUSES = ["FAILED", "SUCCEEDED"]
 
 
 @tracer.capture_method
-def check_active():
+def check_active() -> None:
     """
     Check if there are any accounts being created
     """
@@ -42,7 +42,7 @@ def check_active():
 
 
 @tracer.capture_method
-def create_account(account):
+def create_account(account: AccountModel) -> None:
     """
     Provision a new account through Service Catalog
     """
@@ -69,6 +69,7 @@ def create_account(account):
             condition=(AccountModel.status == "QUEUED"),
         )
     except pynamodb.exceptions.UpdateError as error:
+        logger.exception("Unable to update account")
         if isinstance(error.cause, botocore.exceptions.ClientError):
             if (
                 error.cause.response["Error"]["Code"]
@@ -99,6 +100,7 @@ def update_status(account: AccountModel) -> str:
                 condition=(AccountModel.status == account.status),
             )
         except pynamodb.exceptions.UpdateError as error:
+            logger.exception("Unable to update account")
             if isinstance(error.cause, botocore.exceptions.ClientError):
                 if (
                     error.cause.response["Error"]["Code"]
@@ -113,7 +115,7 @@ def update_status(account: AccountModel) -> str:
 
 
 @tracer.capture_method
-def process_record(record):
+def process_record(record: dict) -> None:
     """
     Process an individual record. To keep the message in the queue, this function must throw an exception.
     """
@@ -153,6 +155,7 @@ def process_record(record):
     try:
         create_account(account)
     except botocore.exceptions.ClientError as error:
+        logger.exception("Unable to create account")
         if error.response["Error"]["Code"] == "InvalidParametersException":
             logger.error(
                 f"Invalid parameters in account '{account_name}', deleting message"
@@ -169,6 +172,7 @@ def process_record(record):
                     condition=(AccountModel.status == "QUEUED"),
                 )
             except pynamodb.exceptions.UpdateError as error:
+                logger.exception("Unable to update account")
                 if isinstance(error.cause, botocore.exceptions.ClientError):
                     if (
                         error.cause.response["Error"]["Code"]
@@ -186,6 +190,6 @@ def process_record(record):
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: dict) -> None:
     for record in event.get("Records", []):
         process_record(record)

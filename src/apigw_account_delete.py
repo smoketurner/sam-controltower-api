@@ -20,7 +20,7 @@ metrics = Metrics()
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: dict) -> dict:
 
     if not event or "pathParameters" not in event:
         return error_response(400, "Unknown event")
@@ -39,6 +39,7 @@ def lambda_handler(event, context):
     try:
         account.delete(AccountModel.status == "QUEUED")
     except pynamodb.exceptions.DeleteError as error:
+        logger.exception("Unable to delete account")
         if isinstance(error.cause, botocore.exceptions.ClientError):
             if (
                 error.cause.response["Error"]["Code"]
@@ -46,9 +47,8 @@ def lambda_handler(event, context):
             ):
                 return error_response(
                     409,
-                    f'Account creation for "{account_name}" is in progress and cannot be deleted',
+                    f'Account creation for "{account_name}" has already started and cannot be deleted',
                 )
-        logger.exception("Unable to delete account")
         return error_response(500, "Unable to delete account")
 
     return build_response(204)

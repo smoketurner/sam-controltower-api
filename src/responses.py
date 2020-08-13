@@ -16,7 +16,7 @@ __all__ = ["build_response", "error_response", "authenticate_request"]
 
 
 class DateTimeEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj) -> str:
         if isinstance(obj, datetime):
             return obj.isoformat() + "Z"
         return super().default(obj)

@@ -25,7 +25,7 @@ TOKEN = None
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: dict) -> None:
 
     account_name = event.get("account", {}).get("accountName")
 

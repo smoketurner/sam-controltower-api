@@ -30,7 +30,7 @@ with open("./schemas/create_account.json", "r") as fp:
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: dict) -> dict:
     if not event or "body" not in event:
         return error_response(400, "Unknown event")
 
