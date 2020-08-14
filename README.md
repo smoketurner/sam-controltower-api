@@ -9,13 +9,6 @@ When creating a new account, you can also provide a callback URL to be notified 
 
 ## Features
 
-During installation, this project will also enable the following best practices:
-
-- Configure the [Audit Account](https://docs.aws.amazon.com/controltower/latest/userguide/how-control-tower-works.html#what-is-audit) to be the [Security Hub](https://docs.aws.amazon.com/securityhub/latest/userguide/securityhub-accounts.html) admin account (in multiple regions)
-- Configure the [Audit Account](https://docs.aws.amazon.com/controltower/latest/userguide/how-control-tower-works.html#what-is-audit) to be the [GuardDuty](https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_organizations.html) admin account (in multiple regions)
-- Delegate access from the root account to the [Audit Account](https://docs.aws.amazon.com/controltower/latest/userguide/how-control-tower-works.html#what-is-audit) and create an organizational [IAM access analyzer](https://docs.aws.amazon.com/IAM/latest/UserGuide/what-is-access-analyzer.html)
-- Apply an organization [opt-out policy](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_ai-opt-out_syntax.html#ai-opt-out-policy-examples) for all AI services
-
 After a new account has been successfully created, this application will do the following actions on the new account:
 
 1. Deletes the [default VPC](https://docs.aws.amazon.com/vpc/latest/userguide/default-vpc.html) in all of the regions
@@ -32,15 +25,6 @@ make setup
 make build
 make deploy
 ```
-
-## TODO
-
-### One-Time Best Practices
-
-- Create a new `Network` account with a TransitGateway
-- Create a new `SharedServices` account to host an AWS Service Catalog portfolio shared to the organization
-- Create a VPC product in the service catalog that will automatically attach to the transit gateway and to a private Route53 hosted zone in the account
-- Apply an SCP policy to block common actions
 
 ## References
 
