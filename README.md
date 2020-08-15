@@ -3,7 +3,7 @@
 AWS SAM project to provide a [Control Tower](https://aws.amazon.com/controltower/) API that exposes an HTTPS endpoint for creating new AWS accounts.
 
 - `POST /v1/accounts` - create a new AWS account
-- `GET /v1/accounts/{recordId}` - return the status of a previous account creation request
+- `GET /v1/accounts/{accountName}` - return the status of a previous account creation request
 
 When creating a new account, you can also provide a callback URL to be notified when the account creation has completed.
 
