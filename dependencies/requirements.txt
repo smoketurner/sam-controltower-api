@@ -1,4 +1,4 @@
 aws-lambda-powertools==1.1.2
 boto3==1.14.41
 fastjsonschema==2.14.4
-pynamodb==4.3.2
+pynamodb==4.3.3
