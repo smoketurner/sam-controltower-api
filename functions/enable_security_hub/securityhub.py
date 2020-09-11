@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 
 from aws_lambda_powertools import Logger
+import boto3
 import botocore
 
-logger = Logger()
+logger = Logger(child=True)
 
 
 class SecurityHub:
-    def __init__(self, role, region: str, account_id: str = None) -> None:
+    def __init__(
+        self, role: boto3.Session, region: str, account_id: str = None
+    ) -> None:
         self.client = role.client("securityhub", region_name=region)
         self.account_id = account_id  # only used for logging
         self.region = region  # only used for logging

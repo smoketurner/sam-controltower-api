@@ -4,6 +4,7 @@
 from datetime import datetime
 import json
 import os
+from typing import Dict, Any
 import secrets
 
 from .controltowerapi.secretsmanager import SecretsManager
@@ -22,7 +23,9 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def build_response(code: int, data: dict = None, headers: dict = None) -> dict:
+def build_response(
+    code: int, data: Dict[str, Any] = None, headers: Dict[str, str] = None
+) -> Dict[str, Any]:
 
     response = {"statusCode": code, "headers": {}}
 
@@ -46,7 +49,7 @@ def build_response(code: int, data: dict = None, headers: dict = None) -> dict:
     return response
 
 
-def error_response(code: int, message: str) -> dict:
+def error_response(code: int, message: str) -> Dict[str, Any]:
     return build_response(code, {"code": code, "message": message})
 
 

@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Dict, Optional, Any
+
 from aws_lambda_powertools import Logger
 import boto3
 import botocore
 
 CT_PORTFOLIO_NAME = "AWS Control Tower Account Factory Portfolio"
 CT_PRODUCT_NAME = "AWS Control Tower Account Factory"
-logger = Logger()
+logger = Logger(child=True)
 
 __all__ = ["ServiceCatalog"]
 
@@ -16,7 +18,7 @@ class ServiceCatalog:
     def __init__(self) -> None:
         self.client = boto3.client("servicecatalog")
 
-    def get_ct_portfolio_id(self) -> str:
+    def get_ct_portfolio_id(self) -> Optional[str]:
         """
         Return the portfolio ID for the Control Tower Account Factory Portfolio
         """
@@ -43,7 +45,7 @@ class ServiceCatalog:
                 f"Unable to associate principal to portfolio {portfolio_id}"
             )
 
-    def get_ct_product(self) -> dict:
+    def get_ct_product(self) -> Dict[str, str]:
         """
         Get the Control Tower account provision product ID
         """
@@ -74,7 +76,9 @@ class ServiceCatalog:
 
         return data
 
-    def provision_product(self, product: dict, parameters: dict) -> dict:
+    def provision_product(
+        self, product: Dict[str, str], parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Provision a new AWS account
         """
@@ -96,9 +100,9 @@ class ServiceCatalog:
             logger.exception("Unable to provision product")
             raise error
 
-        return response.get("RecordDetail")
+        return response["RecordDetail"]
 
-    def describe_record(self, record_id):
+    def describe_record(self, record_id: str) -> Dict[str, Any]:
         """
         Describe a provisioned product record
         """

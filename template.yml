@@ -161,6 +161,7 @@ Resources:
               AWS: !GetAtt QueueProcessorFunctionRole.Arn
             Action:
               - "sqs:DeleteMessage"
+              - "sqs:DeleteMessageBatch"
               - "sqs:GetQueueAttributes"
               - "sqs:ReceiveMessage"
             Resource: !GetAtt AccountQueue.Arn

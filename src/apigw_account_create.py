@@ -4,9 +4,11 @@
 from datetime import datetime, timezone
 import json
 import os
+from typing import Dict, Any
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.typing import LambdaContext
 import boto3
 import botocore
 import fastjsonschema
@@ -30,7 +32,7 @@ with open("./schemas/create_account.json", "r") as fp:
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event: dict, context: dict) -> dict:
+def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Dict[str, Any]:
     if not event or "body" not in event:
         return error_response(400, "Unknown event")
 

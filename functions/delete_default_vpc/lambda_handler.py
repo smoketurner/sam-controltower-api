@@ -9,8 +9,10 @@
 from concurrent.futures import ThreadPoolExecutor
 import warnings
 import time
+from typing import Dict, Any
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.typing import LambdaContext
 import boto3
 import botocore
 
@@ -21,7 +23,7 @@ logger = Logger()
 metrics = Metrics()
 
 
-def vpc_cleanup(vpcid, session, region):
+def vpc_cleanup(vpcid: str, session: boto3.Session, region: str) -> None:
     if not vpcid:
         return
 
@@ -56,7 +58,9 @@ def vpc_cleanup(vpcid, session, region):
     logger.info(f"VPC {vpcid} and associated resources has been deleted.")
 
 
-def delete_default_vpc(client, account_id, region, session):
+def delete_default_vpc(
+    client: Any, account_id: str, region: str, session: boto3.Session
+) -> None:
     default_vpc_id = None
     max_retry_seconds = 360
     while True:
@@ -93,7 +97,9 @@ def delete_default_vpc(client, account_id, region, session):
     vpc_cleanup(default_vpc_id, session, region)
 
 
-def schedule_delete_default_vpc(account_id, region, credentials):
+def schedule_delete_default_vpc(
+    account_id: str, region: str, credentials: Dict[str, str]
+) -> None:
     session = boto3.session.Session(
         aws_access_key_id=credentials["AccessKeyId"],
         aws_secret_access_key=credentials["SecretAccessKey"],
@@ -106,7 +112,7 @@ def schedule_delete_default_vpc(account_id, region, credentials):
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def handler(event, context):
+def handler(event: Dict[str, Any], context: LambdaContext) -> None:
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:

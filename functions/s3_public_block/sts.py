@@ -8,7 +8,10 @@ class STS:
     def __init__(self) -> None:
         self.client = boto3.client("sts")
 
-    def assume_role(self, role_arn, role_session_name):
+    def assume_role(self, role_arn: str, role_session_name: str) -> boto3.Session:
+        """
+        Assume a role and return a new boto3 session
+        """
         response = self.client.assume_role(
             RoleArn=role_arn, RoleSessionName=role_session_name
         )

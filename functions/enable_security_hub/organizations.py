@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Optional
+
 import boto3
 
 CT_AUDIT_ACCOUNT_NAME = "Audit"
@@ -10,7 +12,7 @@ class Organizations:
     def __init__(self) -> None:
         self.client = boto3.client("organizations")
 
-    def get_audit_account_id(self) -> str:
+    def get_audit_account_id(self) -> Optional[str]:
         """
         Return the Control Tower Audit account
         """
@@ -22,7 +24,7 @@ class Organizations:
                     return account["Id"]
         return None
 
-    def get_account_email(self, account_id) -> str:
+    def get_account_email(self, account_id) -> Optional[str]:
         """
         Return the email address for an account
         """

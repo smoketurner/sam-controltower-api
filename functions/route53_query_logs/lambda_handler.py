@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import json
+from typing import Dict, Any
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.typing import LambdaContext
 
 from .sts import STS
 
@@ -18,7 +20,7 @@ metrics = Metrics()
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def handler(event, context):
+def handler(event: Dict[str, Any], context: LambdaContext) -> None:
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:

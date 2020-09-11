@@ -5,7 +5,7 @@ from aws_lambda_powertools import Logger
 import boto3
 import botocore
 
-logger = Logger()
+logger = Logger(child=True)
 
 __all__ = ["SecretsManager"]
 
@@ -21,4 +21,4 @@ class SecretsManager:
             logger.exception(f"Unable to get secret value for {secret_id}")
             raise error
 
-        return response.get("SecretString")
+        return response["SecretString"]

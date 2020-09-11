@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import os
+from typing import List, Dict, Any
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.typing import LambdaContext
 import boto3
 
 from .organizations import Organizations
@@ -20,7 +22,7 @@ metrics = Metrics()
 
 
 @tracer.capture_method
-def get_regions() -> list:
+def get_regions() -> List[str]:
     """
     Return the list of regions
     """
@@ -42,7 +44,7 @@ def get_regions() -> list:
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def handler(event, context):
+def handler(event: Dict[str, Any], context: LambdaContext) -> None:
 
     account_id = event.get("account", {}).get("accountId")
     if not account_id:

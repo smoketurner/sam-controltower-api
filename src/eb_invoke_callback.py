@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 import hmac
 import json
 import os
+from typing import Dict, Any
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.typing import LambdaContext
 import requests
 
 from .controltowerapi.models import AccountModel
@@ -25,7 +27,7 @@ TOKEN = None
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event: dict, context: dict) -> None:
+def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> None:
 
     account_name = event.get("account", {}).get("accountName")
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Dict, Any
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.typing import LambdaContext
 import botocore
 import pynamodb
 
@@ -20,7 +22,7 @@ metrics = Metrics()
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event: dict, context: dict) -> dict:
+def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Dict[str, Any]:
 
     if not event or "pathParameters" not in event:
         return error_response(400, "Unknown event")

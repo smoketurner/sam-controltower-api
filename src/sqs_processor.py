@@ -4,9 +4,12 @@
 from datetime import datetime, timezone
 import json
 import os
+from typing import Dict, Any, Optional
 import warnings
 
 from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools.utilities.batch import sqs_batch_processor
+from aws_lambda_powertools.utilities.typing import LambdaContext
 import botocore
 import pynamodb
 
@@ -24,8 +27,8 @@ CT_PORTFOLIO_ID = servicecatalog.get_ct_portfolio_id()
 servicecatalog.associate_principal(CT_PORTFOLIO_ID, os.environ["LAMBDA_ROLE_ARN"])
 CT_PRODUCT = servicecatalog.get_ct_product()
 
-ACTIVE_STATUSES = ["CREATED", "IN_PROGRESS", "IN_PROGRESS_IN_ERROR"]
-FINISH_STATUSES = ["FAILED", "SUCCEEDED"]
+ACTIVE_STATUSES = {"CREATED", "IN_PROGRESS", "IN_PROGRESS_IN_ERROR"}
+FINISH_STATUSES = {"FAILED", "SUCCEEDED"}
 
 
 @tracer.capture_method
@@ -69,18 +72,19 @@ def create_account(account: AccountModel) -> None:
             condition=(AccountModel.status == "QUEUED"),
         )
     except pynamodb.exceptions.UpdateError as error:
-        logger.exception("Unable to update account")
         if isinstance(error.cause, botocore.exceptions.ClientError):
             if (
                 error.cause.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"
             ):
                 logger.warn("Account status was not QUEUED")
+        else:
+            logger.exception("Unable to update account")
         raise error
 
 
 @tracer.capture_method
-def update_status(account: AccountModel) -> str:
+def update_status(account: AccountModel) -> Optional[str]:
     """
     Update the DynamoDB item with the latest ServiceCatalog status
     """
@@ -115,7 +119,7 @@ def update_status(account: AccountModel) -> str:
 
 
 @tracer.capture_method
-def process_record(record: dict) -> None:
+def record_handler(record: Dict[str, str]) -> None:
     """
     Process an individual record. To keep the message in the queue, this function must throw an exception.
     """
@@ -190,6 +194,6 @@ def process_record(record: dict) -> None:
 @metrics.log_metrics(capture_cold_start_metric=True)
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
-def lambda_handler(event: dict, context: dict) -> None:
-    for record in event.get("Records", []):
-        process_record(record)
+@sqs_batch_processor(record_handler=record_handler)
+def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> None:
+    return {"statusCode": 200}
