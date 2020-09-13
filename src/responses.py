@@ -7,7 +7,7 @@ import os
 from typing import Dict, Any
 import secrets
 
-from .controltowerapi.secretsmanager import SecretsManager
+from controltowerapi.secretsmanager import SecretsManager
 
 
 SECRET_ID = os.environ["SECRET_ID"]

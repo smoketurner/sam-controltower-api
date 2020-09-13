@@ -12,7 +12,7 @@ from aws_lambda_powertools import Logger, Metrics, Tracer
 from aws_lambda_powertools.utilities.typing import LambdaContext
 import requests
 
-from .controltowerapi.models import AccountModel
+from controltowerapi.models import AccountModel
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 

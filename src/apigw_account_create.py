@@ -14,8 +14,8 @@ import botocore
 import fastjsonschema
 import pynamodb
 
-from .controltowerapi.models import AccountModel
-from .responses import build_response, error_response, authenticate_request
+from controltowerapi.models import AccountModel
+from responses import build_response, error_response, authenticate_request
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 

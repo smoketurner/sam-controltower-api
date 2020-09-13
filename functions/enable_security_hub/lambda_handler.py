@@ -9,9 +9,9 @@ from aws_lambda_powertools import Logger, Metrics, Tracer
 from aws_lambda_powertools.utilities.typing import LambdaContext
 import boto3
 
-from .organizations import Organizations
-from .sts import STS
-from .securityhub import SecurityHub
+from organizations import Organizations
+from sts import STS
+from securityhub import SecurityHub
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 

@@ -13,8 +13,8 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 import botocore
 import pynamodb
 
-from .controltowerapi.servicecatalog import ServiceCatalog
-from .controltowerapi.models import AccountModel
+from controltowerapi.servicecatalog import ServiceCatalog
+from controltowerapi.models import AccountModel
 
 warnings.filterwarnings("ignore", "No metrics to publish*")
 
