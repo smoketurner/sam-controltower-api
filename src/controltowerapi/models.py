@@ -29,22 +29,22 @@ class AccountModel(Model):
 
     account_name = UnicodeAttribute(hash_key=True)
     account_email = UnicodeAttribute()
-    account_id = UnicodeAttribute()
+    account_id = UnicodeAttribute(null=True)
     sso_user_email = UnicodeAttribute()
     sso_user_first_name = UnicodeAttribute()
     sso_user_last_name = UnicodeAttribute()
-    record_id = UnicodeAttribute()
+    record_id = UnicodeAttribute(null=True)
     ou_name = UnicodeAttribute()
-    ou_id = UnicodeAttribute()
+    ou_id = UnicodeAttribute(null=True)
 
     # QUEUED, CREATED, IN_PROGRESS, IN_PROGRESS_IN_ERROR, SUCCEEDED, FAILED
     status = UnicodeAttribute()
-    status_message = UnicodeAttribute()
+    status_message = UnicodeAttribute(null=True)
     status_index = StatusIndex()
 
-    callback_url = UnicodeAttribute()
-    callback_secret = UnicodeAttribute()
+    callback_url = UnicodeAttribute(null=True)
+    callback_secret = UnicodeAttribute(null=True)
 
     queued_at = UTCDateTimeAttribute()
-    created_at = UTCDateTimeAttribute()
-    updated_at = UTCDateTimeAttribute()
+    created_at = UTCDateTimeAttribute(null=True)
+    updated_at = UTCDateTimeAttribute(null=True)

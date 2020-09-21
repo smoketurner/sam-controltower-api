@@ -19,7 +19,7 @@ Globals:
     Environment:
       Variables:
         POWERTOOLS_METRICS_NAMESPACE: ControlTowerAPI
-        LOG_LEVEL: INFO
+        LOG_LEVEL: DEBUG
 
 Resources:
   ApiKeySecret:
@@ -90,6 +90,7 @@ Resources:
           POWERTOOLS_SERVICE_NAME: apigw_account_create
           ACCOUNT_QUEUE_URL: !Ref AccountQueue
           SECRET_ID: !Ref ApiKeySecret
+          ACCOUNT_TABLE: !Ref AccountTable
       Events:
         HttpApiEvent:
           Type: HttpApi
@@ -103,7 +104,14 @@ Resources:
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref ApiKeySecret
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt AccountQueue.Arn
+            QueueName: !Ref AccountQueue
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:DescribeTable"
+                - "dynamodb:PutItem"
+              Resource: !GetAtt AccountTable.Arn
 
   AccountTable:
     Type: "AWS::DynamoDB::Table"
@@ -144,7 +152,7 @@ Resources:
       MaximumMessageSize: 262144 # 256 KiB (default)
       MessageRetentionPeriod: 1209600 # 14 days
       ReceiveMessageWaitTimeSeconds: 20 # long-polling
-      VisibilityTimeout: 60 # 1 minute
+      VisibilityTimeout: 120 # 2 minutes
 
   AccountQueuePolicy:
     Type: "AWS::SQS::QueuePolicy"
@@ -225,6 +233,7 @@ Resources:
               Action:
                 - "dynamodb:DescribeTable"
                 - "dynamodb:GetItem"
+                - "dynamodb:Query"
                 - "dynamodb:UpdateItem"
               Resource:
                 - !GetAtt AccountTable.Arn

@@ -26,7 +26,8 @@ logger = Logger()
 metrics = Metrics()
 
 with open("./schemas/create_account.json", "r") as fp:
-    VALIDATE = fastjsonschema.compile(fp.read())
+    data = json.loads(fp.read())
+    VALIDATE = fastjsonschema.compile(data)
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)

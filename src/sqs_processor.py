@@ -31,23 +31,47 @@ ACTIVE_STATUSES = {"CREATED", "IN_PROGRESS", "IN_PROGRESS_IN_ERROR"}
 FINISH_STATUSES = {"FAILED", "SUCCEEDED"}
 
 
+def parse_datetime(timestamp: str) -> datetime:
+    """
+    Parse a string value from an AWS response as "2020-09-21 01:53:07.692000+00:00" into a datetime
+
+    Parameters
+    ----------
+    timestamp: str
+        A timestamp to be parsed
+    """
+    return datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
+
+
 @tracer.capture_method
 def check_active() -> None:
     """
-    Check if there are any accounts being created
+    Raise an exception if there are any accounts being created
     """
     for status in ACTIVE_STATUSES:
-        count = AccountModel.status_index.count(status, limit=1)
+        logger.debug(f"Checking if any accounts in status {status}")
+        try:
+            count = AccountModel.status_index.count(status, limit=1)
+        except pynamodb.exceptions.QueryError as error:
+            logger.exception("Unable to query account status index")
+            raise error
+
         if count > 0:
-            raise Exception(
+            logger.warn(
                 f"Found {count} accounts in {status} status, leaving message in queue"
             )
+            raise Exception()
 
 
 @tracer.capture_method
 def create_account(account: AccountModel) -> None:
     """
     Provision a new account through Service Catalog
+
+    Parameters
+    ----------
+    account: AccountModel
+        An account to create through Service Catalog
     """
 
     parameters = {
@@ -65,8 +89,8 @@ def create_account(account: AccountModel) -> None:
         account.update(
             actions=[
                 AccountModel.record_id.set(product["RecordId"]),
-                AccountModel.created_at.set(product["CreatedTime"]),
-                AccountModel.updated_at.set(product["UpdatedTime"]),
+                AccountModel.created_at.set(parse_datetime(product["CreatedTime"])),
+                AccountModel.updated_at.set(parse_datetime(product["UpdatedTime"])),
                 AccountModel.status.set(product["Status"]),
             ],
             condition=(AccountModel.status == "QUEUED"),
@@ -92,29 +116,27 @@ def update_status(account: AccountModel) -> Optional[str]:
         return None
 
     response = servicecatalog.describe_record(account.record_id)
+    logger.debug(response)
 
     status = response.get("RecordDetail", {}).get("Status")
-    if status != account.status:
-        try:
-            account.update(
-                actions=[
-                    AccountModel.status.set(status),
-                    AccountModel.updated_at.set(datetime.now(timezone.utc)),
-                ],
-                condition=(AccountModel.status == account.status),
-            )
-        except pynamodb.exceptions.UpdateError as error:
-            logger.exception("Unable to update account")
-            if isinstance(error.cause, botocore.exceptions.ClientError):
-                if (
-                    error.cause.response["Error"]["Code"]
-                    == "ConditionalCheckFailedException"
-                ):
-                    logger.warn(f"Account status was not {account.status}")
-                else:
-                    raise error.cause
-            else:
-                raise error
+    updated_at = response.get("RecordDetail", {}).get("UpdatedTime")
+    outputs = {
+        output["OutputKey"]: output["OutputValue"]
+        for output in response.get("RecordOutputs", {})
+    }
+
+    actions = [
+        AccountModel.status.set(status),
+        AccountModel.updated_at.set(parse_datetime(updated_at)),
+    ]
+    if "AccountId" in outputs:
+        actions.append(AccountModel.account_id.set(outputs["AccountId"]))
+
+    try:
+        account.update(actions=actions)
+    except pynamodb.exceptions.UpdateError as error:
+        logger.exception("Unable to update account")
+        raise error
     return status
 
 
@@ -123,6 +145,8 @@ def record_handler(record: Dict[str, str]) -> None:
     """
     Process an individual record. To keep the message in the queue, this function must throw an exception.
     """
+    # logger.debug(record)
+
     try:
         body = json.loads(record.get("body"))
     except json.decoder.JSONDecodeError as error:
@@ -137,58 +161,62 @@ def record_handler(record: Dict[str, str]) -> None:
         logger.warn(f"Account '{account_name}' does not exist, deleting message")
         return
 
-    if account.status != "QUEUED":
-        status = update_status(account)
-        if status is None:
-            logger.warn(
-                f"Account {account.account_name} has status {account.status} and no record_id, deleting message"
-            )
-            return
+    logger.debug(f"Account {account.account_name} has status {account.status}")
 
-        elif status in FINISH_STATUSES:
-            logger.info(
-                f"Account '{account.account_name}' reached {status}, deleting message"
-            )
-            return
+    if account.status == "QUEUED":
+        # throw an exception if an item is active so this message is retried
+        check_active()
 
-    # throw an exception if an item is active so this message is retried
-    check_active()
+        logger.info(
+            f"No accounts in progress, creating account '{account.account_name}'"
+        )
 
-    logger.info(f"No accounts in progress, creating account '{account.account_name}'")
-
-    try:
-        create_account(account)
-    except botocore.exceptions.ClientError as error:
-        logger.exception("Unable to create account")
-        if error.response["Error"]["Code"] == "InvalidParametersException":
-            logger.error(
-                f"Invalid parameters in account '{account_name}', deleting message"
-            )
-
-            # update status to FAILED
-            try:
-                account.update(
-                    actions=[
-                        AccountModel.status.set("FAILED"),
-                        AccountModel.status_message.set(error.message),
-                        AccountModel.updated_at.set(datetime.now(timezone.utc)),
-                    ],
-                    condition=(AccountModel.status == "QUEUED"),
+        try:
+            create_account(account)
+        except botocore.exceptions.ClientError as error:
+            logger.exception("Unable to create account")
+            if error.response["Error"]["Code"] == "InvalidParametersException":
+                logger.error(
+                    f"Invalid parameters in account '{account_name}', deleting message"
                 )
-            except pynamodb.exceptions.UpdateError as error:
-                logger.exception("Unable to update account")
-                if isinstance(error.cause, botocore.exceptions.ClientError):
-                    if (
-                        error.cause.response["Error"]["Code"]
-                        == "ConditionalCheckFailedException"
-                    ):
-                        logger.warn("Account status was not QUEUED")
+
+                # update status to FAILED
+                try:
+                    account.update(
+                        actions=[
+                            AccountModel.status.set("FAILED"),
+                            AccountModel.status_message.set(error.message),
+                            AccountModel.updated_at.set(datetime.now(timezone.utc)),
+                        ],
+                        condition=(AccountModel.status == "QUEUED"),
+                    )
+                except pynamodb.exceptions.UpdateError as error:
+                    logger.exception("Unable to update account")
+                    if isinstance(error.cause, botocore.exceptions.ClientError):
+                        if (
+                            error.cause.response["Error"]["Code"]
+                            == "ConditionalCheckFailedException"
+                        ):
+                            logger.warn("Account status was not QUEUED")
+                        else:
+                            raise error.cause
                     else:
-                        raise error.cause
-                else:
-                    raise error
-        else:
-            raise error
+                        raise error
+            else:
+                raise error
+
+    status = update_status(account)
+    if status is None:
+        logger.warn(
+            f"Account {account.account_name} has status {account.status} and no record_id, deleting message"
+        )
+        return
+
+    elif status in FINISH_STATUSES:
+        logger.info(
+            f"Account '{account.account_name}' reached {status}, deleting message"
+        )
+        return
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)

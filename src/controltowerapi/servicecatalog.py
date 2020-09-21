@@ -59,7 +59,7 @@ class ServiceCatalog:
                 break
 
         if not product_id:
-            raise Exception(f'Unable to locate product "{CT_PRODUCT_NAME}"')
+            raise Exception(f"Unable to locate product '{CT_PRODUCT_NAME}'")
 
         artifact_id = None
 
@@ -73,6 +73,8 @@ class ServiceCatalog:
             raise Exception("Unable to locate active provisioning artifact")
 
         data = {"ProductId": product_id, "ProvisioningArtifactId": artifact_id}
+
+        logger.debug(data)
 
         return data
 

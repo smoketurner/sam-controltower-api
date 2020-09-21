@@ -7,9 +7,11 @@ import os
 from typing import Dict, Any
 import secrets
 
+from aws_lambda_powertools import Logger
 from controltowerapi.secretsmanager import SecretsManager
 
 
+logger = Logger(child=True)
 SECRET_ID = os.environ["SECRET_ID"]
 TOKEN = None
 
@@ -20,7 +22,7 @@ class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj) -> str:
         if isinstance(obj, datetime):
             return obj.isoformat() + "Z"
-        return super().default(obj)
+        return super(DateTimeEncoder, self).default(obj)
 
 
 def build_response(
@@ -35,6 +37,9 @@ def build_response(
     response["headers"]["Cache-Control"] = "no-cache,no-store,must-revalidate,max-age=0"
     response["headers"]["Expires"] = "0"
     response["headers"]["Pragma"] = "no-cache"
+    response["headers"]["X-Content-Type-Options"] = "nosniff"
+    response["headers"]["X-Frame-Options"] = "DENY"
+    response["headers"]["X-XSS-Protection"] = "1; mode=block"
 
     if data is not None:
         response["headers"]["Content-Type"] = "application/json; charset=utf-8"
@@ -43,7 +48,7 @@ def build_response(
             sort_keys=True,
             indent=None,
             separators=(",", ":"),
-            default=DateTimeEncoder,
+            cls=DateTimeEncoder,
         )
 
     return response
@@ -68,7 +73,9 @@ def authenticate_request(event) -> bool:
 
     global TOKEN
     if not TOKEN:
-        TOKEN = SecretsManager().get_secret_value(SECRET_ID)
+        TOKEN = SecretsManager().get_secret_value(SECRET_ID, "token")
+        if not TOKEN:
+            return error_response(500, "Internal Server Error")
 
     try:
         access_token = authorization.split(" ")[1]
