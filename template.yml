@@ -439,6 +439,7 @@ Resources:
                     Resource: !GetAtt S3PublicBlockFunction.Arn
                     Retry:
                       - ErrorEquals:
+                          - ThrottlingException
                           - "Lambda.ServiceException"
                           - "Lambda.AWSLambdaException"
                           - "Lambda.SdkClientException"
@@ -454,6 +455,7 @@ Resources:
                     Resource: !GetAtt DeleteDefaultVpcFunction.Arn
                     Retry:
                       - ErrorEquals:
+                          - ThrottlingException
                           - "Lambda.ServiceException"
                           - "Lambda.AWSLambdaException"
                           - "Lambda.SdkClientException"
@@ -469,6 +471,7 @@ Resources:
                     Resource: !GetAtt Route53QueryLogsFunction.Arn
                     Retry:
                       - ErrorEquals:
+                          - ThrottlingException
                           - "Lambda.ServiceException"
                           - "Lambda.AWSLambdaException"
                           - "Lambda.SdkClientException"
@@ -484,6 +487,7 @@ Resources:
                     Resource: !GetAtt EnableSecurityHubFunction.Arn
                     Retry:
                       - ErrorEquals:
+                          - ThrottlingException
                           - "Lambda.ServiceException"
                           - "Lambda.AWSLambdaException"
                           - "Lambda.SdkClientException"
@@ -519,6 +523,8 @@ Resources:
                 - !GetAtt S3PublicBlockFunction.Arn
                 - !GetAtt Route53QueryLogsFunction.Arn
                 - !GetAtt EnableSecurityHubFunction.Arn
+      #Tracing:
+      #  Enabled: true
       Type: STANDARD
 
 Outputs:

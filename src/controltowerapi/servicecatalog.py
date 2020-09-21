@@ -102,7 +102,7 @@ class ServiceCatalog:
             logger.exception("Unable to provision product")
             raise error
 
-        return response["RecordDetail"]
+        return response.get("RecordDetail", {})
 
     def describe_record(self, record_id: str) -> Dict[str, Any]:
         """

@@ -83,7 +83,11 @@ def create_account(account: AccountModel) -> None:
         "SSOUserLastName": account.sso_user_last_name,
     }
 
-    product = servicecatalog.provision_product(CT_PRODUCT, parameters)
+    try:
+        product = servicecatalog.provision_product(CT_PRODUCT, parameters)
+    except Exception as error:
+        logger.exception("Unable to provision product")
+        raise error
 
     try:
         account.update(
@@ -96,14 +100,7 @@ def create_account(account: AccountModel) -> None:
             condition=(AccountModel.status == "QUEUED"),
         )
     except pynamodb.exceptions.UpdateError as error:
-        if isinstance(error.cause, botocore.exceptions.ClientError):
-            if (
-                error.cause.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                logger.warn("Account status was not QUEUED")
-        else:
-            logger.exception("Unable to update account")
+        logger.exception("Unable to update account")
         raise error
 
 
@@ -111,7 +108,13 @@ def create_account(account: AccountModel) -> None:
 def update_status(account: AccountModel) -> Optional[str]:
     """
     Update the DynamoDB item with the latest ServiceCatalog status
+
+    Parameters
+    ----------
+    account: AccountModel
+        An account to retrieve the latest ServiceCatalog status for
     """
+
     if not account.record_id:
         return None
 
@@ -173,50 +176,43 @@ def record_handler(record: Dict[str, str]) -> None:
 
         try:
             create_account(account)
-        except botocore.exceptions.ClientError as error:
+        except Exception as error:
             logger.exception("Unable to create account")
-            if error.response["Error"]["Code"] == "InvalidParametersException":
-                logger.error(
-                    f"Invalid parameters in account '{account_name}', deleting message"
-                )
-
-                # update status to FAILED
-                try:
-                    account.update(
-                        actions=[
-                            AccountModel.status.set("FAILED"),
-                            AccountModel.status_message.set(error.message),
-                            AccountModel.updated_at.set(datetime.now(timezone.utc)),
-                        ],
-                        condition=(AccountModel.status == "QUEUED"),
+            if isinstance(error, botocore.exceptions.ClientError):
+                if error.response["Error"]["Code"] == "InvalidParametersException":
+                    logger.error(
+                        f"Invalid parameters in account '{account_name}', deleting message"
                     )
-                except pynamodb.exceptions.UpdateError as error:
-                    logger.exception("Unable to update account")
-                    if isinstance(error.cause, botocore.exceptions.ClientError):
-                        if (
-                            error.cause.response["Error"]["Code"]
-                            == "ConditionalCheckFailedException"
-                        ):
-                            logger.warn("Account status was not QUEUED")
-                        else:
-                            raise error.cause
-                    else:
+
+                    # update status to FAILED
+                    try:
+                        account.update(
+                            actions=[
+                                AccountModel.status.set("FAILED"),
+                                AccountModel.status_message.set(error.message),
+                                AccountModel.updated_at.set(datetime.now(timezone.utc)),
+                            ],
+                            condition=(AccountModel.status == "QUEUED"),
+                        )
+                    except pynamodb.exceptions.UpdateError as error:
+                        logger.exception("Unable to update account")
                         raise error
+                else:
+                    raise error
             else:
                 raise error
 
-    status = update_status(account)
-    if status is None:
+    if not account.record_id:
         logger.warn(
             f"Account {account.account_name} has status {account.status} and no record_id, deleting message"
         )
         return
 
-    elif status in FINISH_STATUSES:
+    status = update_status(account)
+    if status in FINISH_STATUSES:
         logger.info(
             f"Account '{account.account_name}' reached {status}, deleting message"
         )
-        return
 
 
 @metrics.log_metrics(capture_cold_start_metric=True)
