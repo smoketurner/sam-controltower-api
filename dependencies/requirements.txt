@@ -1,4 +1,4 @@
 aws-lambda-powertools==1.6.1
-boto3==1.15.3
+boto3==1.15.6
 fastjsonschema==2.14.5
 pynamodb==4.3.3
